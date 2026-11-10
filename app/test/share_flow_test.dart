@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:stash/data/repo.dart';
 import 'package:stash/models.dart';
 import 'package:stash/services/api.dart';
+import 'package:stash/services/device_meta.dart';
 import 'package:stash/services/link_parser.dart';
 import 'package:stash/services/pending_queue.dart';
 import 'package:stash/services/suggester.dart';
@@ -79,6 +80,70 @@ void main() {
     expect(t.author, 'some.user');
     expect(canonicalize('https://vm.tiktok.com/ZMabc/')!.needsResolve, isTrue);
     expect(keywordsOf('Easy #Pasta night with garlic'), {'pasta': 2, 'easy': 1, 'night': 1, 'garlic': 1});
+  });
+
+  test('reads previews from the pages the platforms publish', () {
+    final tt = parseTikTokPage(
+      '<html><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">'
+      '{"__DEFAULT_SCOPE__":{"webapp.video-detail":{"itemInfo":{"itemStruct":{"desc":"Easy ramen #food",'
+      '"video":{"cover":"https://p16.tiktokcdn.com/c.jpg"},"author":{"uniqueId":"RamenLab","nickname":"Ramen Lab"}}}}}}'
+      '</script></html>',
+    );
+    expect(tt.caption, 'Easy ramen #food');
+    expect(tt.thumbnailUrl, 'https://p16.tiktokcdn.com/c.jpg');
+    expect(tt.author, 'ramenlab');
+    expect(parseTikTokPage('<html>nothing here</html>').caption, isNull);
+
+    final embed = parseInstagramEmbed(
+      '<img class="EmbeddedMediaImage" alt="x" src="https://scontent.cdninstagram.com/a.jpg?x=1&amp;y=2">'
+      '<span class="UsernameText">Chef.Anna</span>'
+      '<div class="Caption"><a class="CaptionUsername" href="#">chef.anna</a><br /><br />'
+      'Lemon pasta &#064;home <a href="/t">#dinner</a><div class="CaptionComments">',
+    );
+    expect(embed.thumbnailUrl, 'https://scontent.cdninstagram.com/a.jpg?x=1&y=2');
+    expect(embed.author, 'chef.anna');
+    expect(embed.caption, 'Lemon pasta @home #dinner');
+
+    final page = parseInstagramPage(
+      '<meta property="og:title" content="Anna on Instagram: &quot;Lemon pasta&quot;" />'
+      '<meta property="og:url" content="https://www.instagram.com/chef.anna/reel/Cabc/" />'
+      '<meta property="og:image" content="https://scontent.cdninstagram.com/b.jpg" />',
+    );
+    expect(page.caption, 'Lemon pasta');
+    expect(page.author, 'chef.anna');
+    expect(page.thumbnailUrl, 'https://scontent.cdninstagram.com/b.jpg');
+  });
+
+  test('a late AI answer replaces the fallback while the sheet is still untouched', () async {
+    final travel = await repo.createFolder('Travel');
+    final recipes = await repo.createFolder('Recipes');
+    await repo.setKv('last_folder', travel.id);
+    api.delay = const Duration(seconds: 2);
+    api.answer = (_) => FolderSuggestion.existing(recipes.id, SuggestionSource.ai);
+
+    final c = ShareController(repo, api);
+    final started = c.start(reel1);
+    await Future<void>.delayed(const Duration(milliseconds: 1700));
+    expect(c.selected?.id, travel.id);
+    await started;
+    expect(c.selected?.id, recipes.id);
+    expect(c.suggestion?.source, SuggestionSource.ai);
+  });
+
+  test('saved to the fallback, then sorted when the AI answers before the sheet closes', () async {
+    final recipes = await repo.createFolder('Recipes');
+    api.delay = const Duration(seconds: 2);
+    api.answer = (_) => FolderSuggestion.existing(recipes.id, SuggestionSource.ai);
+
+    final c = ShareController(repo, api);
+    final started = c.start(reel1);
+    await Future<void>.delayed(const Duration(milliseconds: 1700));
+    await c.save('');
+    expect(c.confirmation, 'Saved to Unsorted');
+    await started;
+    final post = (await repo.posts()).single;
+    expect(post.folderId, recipes.id);
+    expect(post.needsSuggestion, isFalse);
   });
 
   test('AI suggestion is pre-selected and saved in one step', () async {

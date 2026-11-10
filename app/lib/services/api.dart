@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import '../models.dart';
+import 'device_meta.dart';
 
 /// Thrown when the backend could not be reached (offline, timeout, 5xx).
 class Unreachable implements Exception {}
@@ -13,10 +14,12 @@ const backendUrlKey = 'backend_url';
 
 class Api {
   Api({http.Client? client, String? baseUrl}) : _client = client ?? http.Client() {
+    _device = DeviceMeta(client: _client);
     this.baseUrl = baseUrl ?? Config.backendUrl;
   }
 
   final http.Client _client;
+  late final DeviceMeta _device;
   String _base = '';
 
   /// Where the backend lives. Set at build time, or changed in Settings
@@ -56,10 +59,27 @@ class Api {
     return json is Map<String, dynamic> ? json : null;
   }
 
-  /// Resolves short links and fetches preview metadata.
+  /// Resolves short links and fetches the preview: from the phone first
+  /// (the platforms answer devices more readily than servers), then through
+  /// the backend if that found nothing. Throws [Unreachable] only when
+  /// neither route could be reached.
   Future<PostMeta?> metadata(String url, {Duration timeout = const Duration(seconds: 8)}) async {
-    final j = await _post('/v1/metadata', {'url': url}, timeout);
-    return j == null ? null : PostMeta.fromJson(j);
+    PostMeta? local;
+    var deviceReached = true;
+    try {
+      local = await _device.fetch(url).timeout(timeout);
+    } catch (_) {
+      deviceReached = false;
+    }
+    if (local != null && local.ok) return local;
+    try {
+      final j = await _post('/v1/metadata', {'url': url}, timeout);
+      final remote = j == null ? null : PostMeta.fromJson(j);
+      if (remote != null && (remote.ok || local == null)) return remote;
+    } on Unreachable {
+      if (!deviceReached) rethrow;
+    }
+    return local;
   }
 
   /// Asks the AI to describe the post and pick (or propose) a folder for it.

@@ -52,6 +52,7 @@ class ShareController extends ChangeNotifier {
   String? _savedPostId;
   bool _pipelineFinished = false;
   bool _aiAnswered = false;
+  bool _savedNeedsSuggestion = false;
   bool _disposed = false;
 
   bool get suggesting => suggestion == null && !userPicked && duplicate == null;
@@ -109,15 +110,18 @@ class ShareController extends ChangeNotifier {
     if (_savedPostId != null) {
       // Saved before the preview arrived; attach it now rather than queueing.
       if (m != null) await repo.applyMeta(_savedPostId!, m);
-      return;
+      // Keep going only if the post still needs a real folder.
+      if (!_savedNeedsSuggestion) return;
+    } else if (m != null && duplicate == null) {
+      await _checkDuplicate(m.url);
     }
-    if (m != null && duplicate == null) await _checkDuplicate(m.url);
-    if (duplicate != null || suggestion != null) return;
+    if (duplicate != null || !(suggestion?.isFallback ?? true) || userPicked) return;
+    final inBudget = suggestion == null;
 
     FolderSuggestion? s;
     if (m != null) {
       s = await suggester.local(platform: l.platform, author: author, caption: m.caption);
-      if (s == null && suggestion == null) {
+      if (s == null) {
         try {
           final answer = await suggester.ai(
             platform: l.platform,
@@ -135,9 +139,25 @@ class ShareController extends ChangeNotifier {
         }
       }
     }
+    if (_savedPostId != null) {
+      // Saved to a fallback folder while we were still working. If the answer
+      // made it before the sheet closed, sort the post now instead of waiting
+      // for the queue.
+      if (_savedNeedsSuggestion && reachable) {
+        final target = s == null
+            ? null
+            : s.folderId ?? (await repo.createFolder(s.newName!, emoji: s.newEmoji ?? '📁')).id;
+        if (target != null) {
+          await repo.movePosts([_savedPostId!], target);
+        } else {
+          await repo.clearNeedsSuggestion(_savedPostId!);
+        }
+      }
+      return;
+    }
     // Only an answer that arrived inside the budget counts as "finished";
     // otherwise the queue gets to try again after the save.
-    _pipelineFinished = reachable && suggestion == null;
+    _pipelineFinished = reachable && (inBudget || s != null);
     await _settle(s);
   }
 
@@ -161,9 +181,18 @@ class ShareController extends ChangeNotifier {
   }
 
   Future<void> _settle(FolderSuggestion? s) async {
-    if (suggestion != null || duplicate != null) return;
+    if (duplicate != null) return;
+    // A real answer that arrives after the budget may still replace the
+    // fallback, as long as the user has neither picked a folder nor saved.
+    final upgrade =
+        s != null &&
+        (suggestion?.isFallback ?? false) &&
+        !userPicked &&
+        stage == ShareStage.ready &&
+        _savedPostId == null;
+    if (suggestion != null && !upgrade) return;
     s ??= await suggester.fallback();
-    if (suggestion != null || duplicate != null) return; // lost the race while awaiting
+    if (duplicate != null || (suggestion != null && !upgrade)) return; // lost the race while awaiting
     _deadline?.cancel();
     suggestion = s;
     if (!userPicked) {
@@ -209,6 +238,7 @@ class ShareController extends ChangeNotifier {
       if (note.trim().isNotEmpty) await repo.setNote(dup.id, note);
       confirmation = moved ? 'Moved to ${folder.name}' : 'Already in ${folder.name}';
     } else {
+      _savedNeedsSuggestion = !userPicked && (suggestion?.isFallback ?? true) && !_pipelineFinished;
       _savedPostId = await repo.insertPost(
         link: l,
         sourceUrl: l.url,
@@ -217,7 +247,7 @@ class ShareController extends ChangeNotifier {
         note: note,
         // Filed by fallback before a real suggestion could be made (offline,
         // slow network): let the queue re-file it later.
-        needsSuggestion: !userPicked && (suggestion?.isFallback ?? true) && !_pipelineFinished,
+        needsSuggestion: _savedNeedsSuggestion,
         aiDescription: aiDescription,
         aiDone: _aiAnswered,
       );

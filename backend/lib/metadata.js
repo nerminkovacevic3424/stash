@@ -92,6 +92,57 @@ async function openGraph(url, platform) {
   };
 }
 
+async function getHtml(url) {
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+    redirect: 'manual',
+    headers: { 'user-agent': BOT_UA, accept: 'text/html' },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+const stripTags = (html) => decodeEntities(html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')).trim();
+
+/**
+ * Instagram's public embed page (the one an <iframe> embed loads). It carries
+ * the cover image, handle and caption even when the post page itself does not.
+ */
+export function parseInstagramEmbed(html) {
+  const img = html.match(/<img[^>]+class="EmbeddedMediaImage"[^>]*>/)?.[0]?.match(/src="([^"]+)"/)?.[1];
+  const handle =
+    html.match(/class="UsernameText"[^>]*>([^<]+)</)?.[1] ?? html.match(/class="CaptionUsername"[^>]*>([^<]+)</)?.[1];
+  const block = html.match(/<div class="Caption">([\s\S]*?)<div class="CaptionComments"/)?.[1]
+    ?? html.match(/<div class="Caption">([\s\S]*?)<\/div>/)?.[1];
+  // The caption block opens with the author's handle as a link; drop it.
+  const caption = block ? stripTags(block.replace(/<a class="CaptionUsername"[\s\S]*?<\/a>/, '')) : null;
+  return {
+    author: handle?.trim().toLowerCase() || null,
+    authorName: null,
+    caption: caption || null,
+    thumbnailUrl: img ? decodeEntities(img) : null,
+  };
+}
+
+/** TikTok ships the post's details as JSON inside the public page. */
+export function parseTikTokPage(html) {
+  const json = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+  if (!json) return {};
+  let item;
+  try {
+    item = JSON.parse(json).__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo?.itemStruct;
+  } catch {
+    return {};
+  }
+  if (!item) return {};
+  return {
+    author: item.author?.uniqueId?.toLowerCase() || null,
+    authorName: item.author?.nickname || null,
+    caption: item.desc || null,
+    thumbnailUrl: item.video?.cover || item.video?.originCover || item.imagePost?.images?.[0]?.imageURL?.urlList?.[0] || null,
+  };
+}
+
 const merge = (a, b) => Object.fromEntries(['author', 'authorName', 'caption', 'thumbnailUrl'].map((k) => [k, a[k] || b[k] || null]));
 
 /** Resolves short links, then fetches preview metadata. Never throws. */
@@ -108,6 +159,13 @@ export async function fetchMetadata(rawUrl) {
     meta = await oembed(link.url).catch(() => ({}));
     if (!meta.caption || !meta.thumbnailUrl) {
       meta = merge(meta, await openGraph(link.url, link.platform).catch(() => ({})));
+    }
+    if (!meta.caption || !meta.thumbnailUrl) {
+      const more =
+        link.platform === 'tiktok'
+          ? getHtml(link.url).then(parseTikTokPage)
+          : getHtml(`${link.url}embed/captioned/`).then(parseInstagramEmbed);
+      meta = merge(meta, await more.catch(() => ({})));
     }
   } catch {
     meta = {};
