@@ -152,3 +152,88 @@ class Skeleton extends StatelessWidget {
     ),
   );
 }
+
+/// Text that is cut to [lines] lines and, only when it does not fit, offers
+/// "Show more". [ai] puts the sparkle in front that marks AI-written text.
+class ExpandableText extends StatefulWidget {
+  const ExpandableText(this.text, {super.key, this.style, this.lines = 2, this.ai = false});
+  final String text;
+  final TextStyle? style;
+  final int lines;
+  final bool ai;
+
+  @override
+  State<ExpandableText> createState() => _ExpandableTextState();
+}
+
+class _ExpandableTextState extends State<ExpandableText> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    final style = DefaultTextStyle.of(context).style.merge(widget.style);
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Measure with an em space standing in for the sparkle.
+        final probe = TextPainter(
+          text: TextSpan(text: '${widget.ai ? '\u2003 ' : ''}${widget.text}', style: style),
+          maxLines: widget.lines,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout(maxWidth: box.maxWidth);
+        final overflows = probe.didExceedMaxLines;
+        probe.dispose();
+
+        final text = Text.rich(
+          TextSpan(
+            children: [
+              if (widget.ai)
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(Icons.auto_awesome_rounded, size: 13, color: accent, semanticLabel: 'AI description'),
+                  ),
+                ),
+              TextSpan(text: widget.text),
+            ],
+          ),
+          maxLines: _expanded ? null : widget.lines,
+          overflow: _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
+          style: style,
+        );
+        if (!overflows && !_expanded) return text;
+
+        return Semantics(
+          button: true,
+          label: _expanded ? 'Show less' : 'Show full text',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.topLeft,
+                  child: text,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 3, bottom: 2),
+                  child: Text(
+                    _expanded ? 'Show less' : 'Show more',
+                    style: theme.textTheme.labelSmall?.copyWith(color: accent, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

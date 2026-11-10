@@ -28,28 +28,6 @@ String? _summary(Post post) {
   return c == null || c.isEmpty ? null : c;
 }
 
-/// [text] with a small sparkle in front when it was written by the AI.
-Widget _summaryText(Post post, String text, TextStyle? style, Color accent) {
-  if (post.aiDescription == null) return Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: style);
-  return Text.rich(
-    TextSpan(
-      children: [
-        WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Icon(Icons.auto_awesome_rounded, size: 13, color: accent, semanticLabel: 'AI description'),
-          ),
-        ),
-        TextSpan(text: text),
-      ],
-    ),
-    maxLines: 2,
-    overflow: TextOverflow.ellipsis,
-    style: style,
-  );
-}
-
 /// Opens the original post. The https link is a universal/app link, so the
 /// Instagram or TikTok app takes it when installed; otherwise the browser does.
 Future<void> openPost(BuildContext context, Post post) async {
@@ -138,15 +116,12 @@ class _PostMenu extends StatelessWidget {
   );
 }
 
-/// Visual card for folder grids: tall thumbnail with the author over it,
-/// caption and date underneath.
+/// Visual card for folder grids: tall thumbnail with the author over it, the
+/// description (tap "Show more" for the full text) and date underneath.
 class PostTile extends StatelessWidget {
   const PostTile({super.key, required this.store, required this.post});
   final Store store;
   final Post post;
-
-  /// Height of the text block under the image.
-  static const textHeight = 66.0;
 
   @override
   Widget build(BuildContext context) {
@@ -163,8 +138,10 @@ class PostTile extends StatelessWidget {
         onLongPress: () => showPostDetails(context, store, post),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
+            AspectRatio(
+              aspectRatio: 0.8,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: Stack(
@@ -216,36 +193,28 @@ class PostTile extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(
-              height: textHeight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _summaryText(
-                      post,
-                      caption ?? (post.metaStatus == 0 ? 'Preview loads when you are online' : 'No description yet'),
-                      theme.textTheme.bodySmall?.copyWith(
-                        height: 1.3,
-                        fontSize: 13,
-                        color: caption == null ? muted : theme.colorScheme.onSurface,
-                      ),
-                      theme.colorScheme.primary,
-                    ),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        Text(formatDate(post.createdAt), style: theme.textTheme.labelSmall?.copyWith(color: muted)),
-                        if (post.note != null) ...[
-                          const SizedBox(width: 6),
-                          Icon(Icons.sticky_note_2_outlined, size: 13, color: muted),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                  ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+              child: ExpandableText(
+                caption ?? (post.metaStatus == 0 ? 'Preview loads when you are online' : 'No description yet'),
+                ai: post.aiDescription != null,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  height: 1.3,
+                  fontSize: 13,
+                  color: caption == null ? muted : theme.colorScheme.onSurface,
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 5, 4, 4),
+              child: Row(
+                children: [
+                  Text(formatDate(post.createdAt), style: theme.textTheme.labelSmall?.copyWith(color: muted)),
+                  if (post.note != null) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.sticky_note_2_outlined, size: 13, color: muted),
+                  ],
+                ],
               ),
             ),
           ],
@@ -292,11 +261,10 @@ class PostCard extends StatelessWidget {
                     style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 3),
-                  _summaryText(
-                    post,
+                  ExpandableText(
                     caption ?? (post.metaStatus == 0 ? 'Preview loads when you are online' : post.url),
-                    theme.textTheme.bodyMedium?.copyWith(height: 1.3),
-                    theme.colorScheme.primary,
+                    ai: post.aiDescription != null,
+                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.3),
                   ),
                   if (post.note != null) ...[
                     const SizedBox(height: 4),

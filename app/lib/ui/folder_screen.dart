@@ -118,19 +118,33 @@ class _FolderScreenState extends State<FolderScreen> {
                   )
                 : LayoutBuilder(
                     builder: (context, box) {
-                      // Two columns on phones, more on wide screens; thumbnails stay 4:5.
+                      // Two columns on phones, more on wide screens. Rows size to
+                      // their content so a description can be expanded in place.
                       final columns = (box.maxWidth / 240).ceil().clamp(2, 6);
-                      final width = (box.maxWidth - 40 - 14 * (columns - 1)) / columns;
-                      return GridView.builder(
+                      final rows = (posts.length / columns).ceil();
+                      return ListView.builder(
                         padding: EdgeInsets.fromLTRB(20, 8, 20, 24 + MediaQuery.paddingOf(context).bottom),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          crossAxisSpacing: 14,
-                          mainAxisSpacing: 14,
-                          mainAxisExtent: width * 1.25 + PostTile.textHeight,
+                        itemCount: rows,
+                        itemBuilder: (_, r) => Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (var c = 0; c < columns; c++) ...[
+                                if (c > 0) const SizedBox(width: 14),
+                                Expanded(
+                                  child: r * columns + c < posts.length
+                                      ? PostTile(
+                                          key: ValueKey(posts[r * columns + c].id),
+                                          store: store,
+                                          post: posts[r * columns + c],
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
-                        itemCount: posts.length,
-                        itemBuilder: (_, i) => PostTile(key: ValueKey(posts[i].id), store: store, post: posts[i]),
                       );
                     },
                   ),

@@ -135,12 +135,7 @@ class _PostDetails extends StatelessWidget {
             if (caption != null && caption.isNotEmpty) ...[
               const SizedBox(height: 18),
               label('Caption'),
-              Text(
-                caption,
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(color: muted, height: 1.4),
-              ),
+              ExpandableText(caption, lines: 4, style: theme.textTheme.bodyMedium?.copyWith(color: muted, height: 1.4)),
             ],
             const SizedBox(height: 18),
             Material(

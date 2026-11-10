@@ -61,6 +61,9 @@ class _ShareSheetState extends State<ShareSheet> {
   }
 
   Future<void> _start() async {
+    // Wake the server and open the connection while the preview loads, so
+    // the AI request that follows does not pay for either.
+    unawaited(c.api.ping());
     var text = widget.sharedText;
     if (text == null) {
       try {
@@ -367,10 +370,9 @@ class _Preview extends StatelessWidget {
                 ),
               const SizedBox(height: 5),
               if (caption != null && caption.isNotEmpty)
-                Text(
+                ExpandableText(
                   caption.replaceAll(RegExp(r'\s+'), ' '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  ai: aiDescription != null,
                   style: theme.textTheme.bodySmall?.copyWith(color: muted, height: 1.3),
                 )
               else if (loading)

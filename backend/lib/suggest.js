@@ -2,7 +2,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 
-const MODEL = process.env.SUGGEST_MODEL || 'claude-opus-5-5';
+// The share sheet waits on this call, so the default is the fast model with
+// thinking off. Set SUGGEST_MODEL=claude-opus-5-5 to trade speed for judgment.
+const MODEL = process.env.SUGGEST_MODEL || 'claude-haiku-5-5';
+const FAST = MODEL.startsWith('claude-haiku');
 
 const Answer = z.object({
   description: z
@@ -45,7 +48,7 @@ async function loadCover(url) {
   try {
     const u = new URL(url);
     if (u.protocol !== 'https:' || !IMAGE_HOST.test(u.hostname)) return null;
-    const res = await fetch(u, { signal: AbortSignal.timeout(2500), redirect: 'error' });
+    const res = await fetch(u, { signal: AbortSignal.timeout(1500), redirect: 'error' });
     const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     if (!res.ok || !IMAGE_TYPES.has(type)) return null;
     const bytes = Buffer.from(await res.arrayBuffer());
@@ -86,13 +89,16 @@ export async function suggestFolder(input) {
     caption: clip(input.caption, 1500),
     hashtags: (Array.isArray(input.hashtags) ? input.hashtags : []).slice(0, 30).map((h) => clip(h, 40)),
   };
+  const started = Date.now();
   const cover = typeof input.thumbnailUrl === 'string' ? await loadCover(input.thumbnailUrl) : null;
+  const coverMs = Date.now() - started;
   if (!post.caption && post.hashtags.length === 0 && !cover) return none; // nothing to go on
 
   const res = await anthropic.messages.parse({
     model: MODEL,
-    max_tokens: 2000,
+    max_tokens: 1000,
     system: SYSTEM,
+    ...(FAST ? { thinking: { type: 'disabled' } } : {}),
     output_config: { effort: 'low', format: zodOutputFormat(Answer) },
     messages: [
       {
@@ -104,6 +110,7 @@ export async function suggestFolder(input) {
       },
     ],
   });
+  console.log(`suggest: ${MODEL} cover=${cover ? coverMs + 'ms' : 'none'} total=${Date.now() - started}ms`);
   if (res.stop_reason === 'refusal' || !res.parsed_output) return none;
 
   const out = res.parsed_output;

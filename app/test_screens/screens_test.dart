@@ -69,6 +69,9 @@ class _FakeApi extends Api {
   final String folderId;
 
   @override
+  Future<bool> ping() async => true;
+
+  @override
   Future<PostMeta?> metadata(String url, {Duration timeout = const Duration(seconds: 8)}) async => PostMeta(
     url: url,
     resolved: true,
@@ -130,7 +133,7 @@ const _posts = [
 
 const _descriptions = [
   'A 15-minute creamy garlic butter pasta recipe',
-  'One-pan chicken and crispy potatoes for weeknights',
+  'One-pan chicken thighs with crispy potatoes, lemon and garlic for busy weeknights',
   'Quiet beaches on the southern Albanian coast',
   'The most scenic train ride through the Swiss Alps',
   'Three stretches that loosen tight hips',
@@ -309,6 +312,13 @@ void main() {
   });
 
   testWidgets('settings', (t) => shot(t, 'settings', (_, store) async => AccountScreen(store: store)));
+
+  testWidgets('folder expanded', (t) async {
+    await shot(t, 'folder_expanded', (repo, store) async {
+      final f = store.folders.firstWhere((f) => f.name == 'Recipes');
+      return FolderScreen(store: store, folderId: f.id);
+    }, after: () => t.tap(find.text('Show more').first));
+  });
 
   testWidgets('post details', (t) async {
     await shot(t, 'post_details', (repo, store) async {
