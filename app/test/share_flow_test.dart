@@ -32,10 +32,11 @@ class FakeApi extends Api {
   }
 
   @override
-  Future<FolderSuggestion?> suggest({
+  Future<AiAnswer> suggest({
     required Platform2 platform,
     required String? author,
     required String? caption,
+    required String? thumbnailUrl,
     required List<String> hashtags,
     required List<Folder> folders,
     required Map<String, List<String>> examples,
@@ -44,7 +45,7 @@ class FakeApi extends Api {
   }) async {
     if (!online) throw Unreachable();
     suggestCalls++;
-    return answer?.call(folders);
+    return AiAnswer(suggestion: answer?.call(folders), description: 'A quick creamy garlic pasta recipe');
   }
 }
 
@@ -96,6 +97,8 @@ void main() {
     expect(post.author, 'chef.anna');
     expect(post.metaStatus, 1);
     expect(post.needsSuggestion, isFalse);
+    expect(post.aiDescription, 'A quick creamy garlic pasta recipe');
+    expect(await repo.pendingAi(), isEmpty);
   });
 
   test('same author goes to the same folder without asking the AI', () async {
@@ -161,6 +164,39 @@ void main() {
     expect(post.caption, contains('pasta'));
     expect(post.folderId, recipes.id);
     expect(post.needsSuggestion, isFalse);
+  });
+
+  test('queue sorts by content: creates the folder the AI proposes and adds a description', () async {
+    api.online = false;
+    await (await share(reel1)).save('');
+    expect((await repo.posts()).single.folderId, unsortedId);
+
+    api.online = true;
+    api.answer = (_) => const FolderSuggestion.create('Recipes', '🍳');
+    expect(await PendingQueue(repo, api, Suggester(repo, api)).process(), isTrue);
+
+    final recipes = (await repo.folders()).firstWhere((f) => f.name == 'Recipes');
+    final post = (await repo.posts()).single;
+    expect(post.folderId, recipes.id);
+    expect(post.aiDescription, 'A quick creamy garlic pasta recipe');
+    expect((await repo.posts(query: 'quick creamy')), hasLength(1));
+  });
+
+  test('queue describes posts filed by author history without moving them', () async {
+    final recipes = await repo.createFolder('Recipes');
+    final other = await repo.createFolder('Other');
+    api.answer = (_) => FolderSuggestion.existing(recipes.id, SuggestionSource.ai);
+    await (await share(reel1)).save('');
+
+    // Second post from the same author: filed locally, the AI is never asked in the sheet.
+    await (await share(reel2)).save('');
+    expect(await repo.pendingAi(), hasLength(1));
+
+    api.answer = (_) => FolderSuggestion.existing(other.id, SuggestionSource.ai);
+    await PendingQueue(repo, api, Suggester(repo, api)).process();
+    final posts = await repo.posts(folderId: recipes.id);
+    expect(posts, hasLength(2));
+    expect(posts.every((p) => p.aiDescription != null), isTrue);
   });
 
   test('slow network: falls back to last used once the budget runs out', () async {

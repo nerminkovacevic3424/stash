@@ -100,13 +100,15 @@ class Suggester {
     return null;
   }
 
-  /// LLM pick via the backend. Throws [Unreachable] when offline.
-  Future<FolderSuggestion?> ai({required Platform2 platform, String? author, String? caption}) async {
-    if (caption == null || caption.trim().isEmpty) return null;
+  /// AI description and folder pick via the backend, from the caption and
+  /// cover image. Throws [Unreachable] when offline.
+  Future<AiAnswer> ai({required Platform2 platform, String? author, String? caption, String? thumbnailUrl}) async {
+    if ((caption == null || caption.trim().isEmpty) && thumbnailUrl == null) return AiAnswer.empty;
     return api.suggest(
       platform: platform,
       author: author,
       caption: caption,
+      thumbnailUrl: thumbnailUrl,
       hashtags: hashtagsOf(caption),
       folders: await repo.folders(),
       examples: await repo.folderExamples(),

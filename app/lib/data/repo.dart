@@ -37,6 +37,8 @@ const schema = <String>[
     meta_status INTEGER NOT NULL DEFAULT 0,
     meta_attempts INTEGER NOT NULL DEFAULT 0,
     needs_suggestion INTEGER NOT NULL DEFAULT 0,
+    ai_description TEXT,
+    ai_status INTEGER NOT NULL DEFAULT 0,
     deleted INTEGER NOT NULL DEFAULT 0,
     dirty INTEGER NOT NULL DEFAULT 1)''',
   'CREATE INDEX IF NOT EXISTS posts_folder ON posts(folder_id, created_at)',
@@ -96,6 +98,12 @@ class Repo {
         onOpen: (db) async {
           for (final sql in schema) {
             await db.execute(sql);
+          }
+          // Columns added after the first release.
+          final have = {for (final c in await db.rawQuery('PRAGMA table_info(posts)')) c['name']};
+          if (!have.contains('ai_description')) await db.execute('ALTER TABLE posts ADD COLUMN ai_description TEXT');
+          if (!have.contains('ai_status')) {
+            await db.execute('ALTER TABLE posts ADD COLUMN ai_status INTEGER NOT NULL DEFAULT 0');
           }
         },
       ),
@@ -208,9 +216,9 @@ class Repo {
     if (q.isNotEmpty) {
       final like = '%${q.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%';
       where.add(
-        "(caption LIKE ? ESCAPE '\\' OR author LIKE ? ESCAPE '\\' OR author_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\')",
+        "(ai_description LIKE ? ESCAPE '\\' OR caption LIKE ? ESCAPE '\\' OR author LIKE ? ESCAPE '\\' OR author_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\')",
       );
-      args.addAll([like, like, like, like]);
+      args.addAll([like, like, like, like, like]);
     }
     final rows = await db.query(
       'posts',
@@ -243,6 +251,8 @@ class Repo {
     PostMeta? meta,
     String? note,
     bool needsSuggestion = false,
+    String? aiDescription,
+    bool aiDone = false,
   }) async {
     final id = newId();
     final now = _now();
@@ -261,6 +271,8 @@ class Repo {
       'updated_at': now,
       'meta_status': meta != null && meta.ok ? 1 : 0,
       'needs_suggestion': needsSuggestion ? 1 : 0,
+      'ai_description': aiDescription,
+      'ai_status': aiDone ? 1 : 0,
     });
     return id;
   }
@@ -335,10 +347,18 @@ class Repo {
     orderBy: 'created_at',
   )).map(Post.fromRow).toList();
 
-  Future<List<Post>> pendingSuggestion() async => (await db.query(
+  /// Posts with metadata that the AI has not looked at yet.
+  Future<List<Post>> pendingAi() async => (await db.query(
     'posts',
-    where: 'deleted = 0 AND needs_suggestion = 1 AND meta_status != 0',
+    where: 'deleted = 0 AND ai_status = 0 AND meta_status != 0',
+    orderBy: 'created_at',
   )).map(Post.fromRow).toList();
+
+  /// Records the AI's description (may be null) and marks the post as seen.
+  Future<void> setAi(String postId, String? description) => db.rawUpdate(
+    'UPDATE posts SET ai_description = COALESCE(?, ai_description), ai_status = 1, updated_at = ?, dirty = 1 WHERE id = ?',
+    [description, _now(), postId],
+  );
 
   // ---- suggestion inputs & learning ----
 

@@ -29,6 +29,9 @@ class ShareController extends ChangeNotifier {
   bool metaLoading = true;
   List<Folder> folders = const [];
 
+  /// The AI's one-line summary of the post, when it answered in time.
+  String? aiDescription;
+
   /// Null until settled.
   FolderSuggestion? suggestion;
 
@@ -48,6 +51,7 @@ class ShareController extends ChangeNotifier {
   Timer? _deadline;
   String? _savedPostId;
   bool _pipelineFinished = false;
+  bool _aiAnswered = false;
   bool _disposed = false;
 
   bool get suggesting => suggestion == null && !userPicked && duplicate == null;
@@ -115,7 +119,17 @@ class ShareController extends ChangeNotifier {
       s = await suggester.local(platform: l.platform, author: author, caption: m.caption);
       if (s == null && suggestion == null) {
         try {
-          s = await suggester.ai(platform: l.platform, author: author, caption: m.caption);
+          final answer = await suggester.ai(
+            platform: l.platform,
+            author: author,
+            caption: m.caption,
+            thumbnailUrl: m.thumbnailUrl,
+          );
+          s = answer.suggestion;
+          aiDescription = answer.description;
+          _aiAnswered = true;
+          if (_savedPostId != null) await repo.setAi(_savedPostId!, aiDescription);
+          _notify();
         } on Unreachable {
           reachable = false;
         }
@@ -204,6 +218,8 @@ class ShareController extends ChangeNotifier {
         // Filed by fallback before a real suggestion could be made (offline,
         // slow network): let the queue re-file it later.
         needsSuggestion: !userPicked && (suggestion?.isFallback ?? true) && !_pipelineFinished,
+        aiDescription: aiDescription,
+        aiDone: _aiAnswered,
       );
       confirmation = 'Saved to ${folder.name}';
     }

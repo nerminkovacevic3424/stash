@@ -79,16 +79,20 @@ class _FakeApi extends Api {
   );
 
   @override
-  Future<FolderSuggestion?> suggest({
+  Future<AiAnswer> suggest({
     required Platform2 platform,
     required String? author,
     required String? caption,
+    required String? thumbnailUrl,
     required List<String> hashtags,
     required List<Folder> folders,
     required Map<String, List<String>> examples,
     required List<Map<String, String>> hints,
     Duration timeout = const Duration(seconds: 8),
-  }) async => FolderSuggestion.existing(folderId, SuggestionSource.ai);
+  }) async => AiAnswer(
+    suggestion: FolderSuggestion.existing(folderId, SuggestionSource.ai),
+    description: 'A 15-minute creamy garlic butter pasta recipe',
+  );
 }
 
 Future<void> _loadFonts() async {
@@ -124,6 +128,15 @@ const _posts = [
   ('Funny', 'tiktok', 'catdistributor', 'He does this every single morning', null),
 ];
 
+const _descriptions = [
+  'A 15-minute creamy garlic butter pasta recipe',
+  'One-pan chicken and crispy potatoes for weeknights',
+  'Quiet beaches on the southern Albanian coast',
+  'The most scenic train ride through the Swiss Alps',
+  'Three stretches that loosen tight hips',
+  'A cat with a very strict morning routine',
+];
+
 Future<Repo> _seed() async {
   final repo = await Repo.open(path: inMemoryDatabasePath, factory: databaseFactoryFfiNoIsolate);
   final ids = <String, String>{};
@@ -148,6 +161,8 @@ Future<Repo> _seed() async {
       folderId: ids[folder]!,
       meta: PostMeta(url: url, resolved: true, author: author, caption: caption, thumbnailUrl: 'img$i', ok: true),
       note: note,
+      aiDescription: i.isEven ? _descriptions[i ~/ 2 % _descriptions.length] : null,
+      aiDone: true,
     );
     // Spread the save dates so "Today / Yesterday / 12 Mar" all show up.
     await repo.db.rawUpdate('UPDATE posts SET created_at = created_at - ? WHERE url = ?', [

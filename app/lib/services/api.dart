@@ -62,21 +62,23 @@ class Api {
     return j == null ? null : PostMeta.fromJson(j);
   }
 
-  /// Asks the LLM for a folder. Null when it has no opinion.
-  Future<FolderSuggestion?> suggest({
+  /// Asks the AI to describe the post and pick (or propose) a folder for it.
+  Future<AiAnswer> suggest({
     required Platform2 platform,
     required String? author,
     required String? caption,
+    required String? thumbnailUrl,
     required List<String> hashtags,
     required List<Folder> folders,
     required Map<String, List<String>> examples,
     required List<Map<String, String>> hints,
-    Duration timeout = const Duration(seconds: 8),
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     final j = await _post('/v1/suggest', {
       'platform': platform.name,
       'author': author,
       'caption': caption,
+      'thumbnailUrl': thumbnailUrl,
       'hashtags': hashtags,
       'folders': [
         for (final f in folders)
@@ -84,14 +86,18 @@ class Api {
       ],
       'hints': hints,
     }, timeout);
-    final s = j?['suggestion'];
-    if (s is! Map) return null;
-    if (s['kind'] == 'existing' && folders.any((f) => f.id == s['folderId'])) {
-      return FolderSuggestion.existing(s['folderId'] as String, SuggestionSource.ai);
+    if (j == null) return AiAnswer.empty;
+    final d = j['description'];
+    final description = d is String && d.trim().isNotEmpty ? d.trim() : null;
+    final s = j['suggestion'];
+    FolderSuggestion? suggestion;
+    if (s is Map) {
+      if (s['kind'] == 'existing' && folders.any((f) => f.id == s['folderId'])) {
+        suggestion = FolderSuggestion.existing(s['folderId'] as String, SuggestionSource.ai);
+      } else if (s['kind'] == 'new' && s['name'] is String) {
+        suggestion = FolderSuggestion.create(s['name'] as String, (s['emoji'] as String?) ?? '📁');
+      }
     }
-    if (s['kind'] == 'new' && s['name'] is String) {
-      return FolderSuggestion.create(s['name'] as String, (s['emoji'] as String?) ?? '📁');
-    }
-    return null;
+    return AiAnswer(suggestion: suggestion, description: description);
   }
 }

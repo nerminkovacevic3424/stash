@@ -15,6 +15,7 @@ const _postCols = [
   'caption',
   'thumbnail_url',
   'note',
+  'ai_description',
   'folder_id',
   'created_at',
   'updated_at',
@@ -104,6 +105,7 @@ class SyncService {
     final row = <String, Object?>{for (final c in cols) c: remote[c], 'deleted': deleted ? 1 : 0, 'dirty': 0};
     if (table == 'posts') {
       row['meta_status'] = (remote['caption'] ?? remote['thumbnail_url']) != null ? 1 : 0;
+      row['ai_status'] = remote['ai_description'] != null ? 1 : 0;
       if (!deleted) {
         // Both devices saved the same link independently: keep the incoming copy.
         await db.update(

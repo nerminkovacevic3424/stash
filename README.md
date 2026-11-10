@@ -16,6 +16,8 @@ supabase/   schema for optional multi-device sync
 - **Android**: `ShareActivity` is a translucent activity that runs a second Dart entrypoint (`shareMain`), so the sheet draws over Instagram/TikTok and shares all logic with the main app.
 - **iOS**: the Share Extension is native SwiftUI (fast to launch, well inside the extension memory limit). It reads and writes the same SQLite file as the Flutter app through the App Group container, so there is no hand-off step.
 - **Suggestion order**: a folder you previously used or corrected for this author → keywords learned from your corrections → the LLM (existing folder, or a proposed new one) → last-used folder → Unsorted. If nothing answers within 1.5s the fallback is used and never swapped out from under your thumb.
+- **AI description**: the AI writes a one-sentence description of each post from its caption and cover image. Cards show it (marked with a sparkle) in place of the raw caption, and search covers it.
+- **Sorting by content**: when no existing folder matches a post's topic, the AI proposes a new folder and it is created on save. Posts saved before the AI could answer are sorted the next time the app is open and online, including into new folders.
 - **Offline**: saving only needs the URL. Posts saved without a preview, or filed by fallback, are finished by a queue the next time the main app is open and online.
 - **Duplicates**: a link that is already saved shows where it lives and turns Save into "Move to …".
 
@@ -32,7 +34,7 @@ npm start                # listens on :8787
 |---|---|
 | `POST /v1/metadata` `{url}` | resolve short links, then TikTok oEmbed / Meta oEmbed, falling back to Open Graph tags |
 | `POST /v1/resolve` `{url}` | redirect resolution only (hosts are allow-listed) |
-| `POST /v1/suggest` | AI folder suggestion |
+| `POST /v1/suggest` | AI description of the post, plus a folder (existing or new) |
 
 ### Putting it online
 

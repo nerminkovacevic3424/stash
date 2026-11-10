@@ -20,9 +20,33 @@ String formatDate(DateTime d) {
 
 String _title(Post post) => post.author != null ? '@${post.author}' : '${post.platform.label} post';
 
-String? _caption(Post post) {
-  final c = post.caption?.replaceAll(RegExp(r'\s+'), ' ').trim();
+/// The line that says what a post is: the AI's description when there is one,
+/// otherwise the original caption.
+String? _summary(Post post) {
+  final c = (post.aiDescription ?? post.caption)?.replaceAll(RegExp(r'\s+'), ' ').trim();
   return c == null || c.isEmpty ? null : c;
+}
+
+/// [text] with a small sparkle in front when it was written by the AI.
+Widget _summaryText(Post post, String text, TextStyle? style, Color accent) {
+  if (post.aiDescription == null) return Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: style);
+  return Text.rich(
+    TextSpan(
+      children: [
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Icon(Icons.auto_awesome_rounded, size: 13, color: accent, semanticLabel: 'AI description'),
+          ),
+        ),
+        TextSpan(text: text),
+      ],
+    ),
+    maxLines: 2,
+    overflow: TextOverflow.ellipsis,
+    style: style,
+  );
 }
 
 /// Opens the original post. The https link is a universal/app link, so the
@@ -135,7 +159,7 @@ class PostTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
-    final caption = _caption(post);
+    final caption = _summary(post);
 
     return Semantics(
       button: true,
@@ -206,15 +230,15 @@ class PostTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      caption ?? (post.metaStatus == 0 ? 'Preview loads when you are online' : 'No caption'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
+                    _summaryText(
+                      post,
+                      caption ?? (post.metaStatus == 0 ? 'Preview loads when you are online' : 'No description yet'),
+                      theme.textTheme.bodySmall?.copyWith(
                         height: 1.3,
                         fontSize: 13,
                         color: caption == null ? muted : theme.colorScheme.onSurface,
                       ),
+                      theme.colorScheme.primary,
                     ),
                     const Spacer(),
                     Row(
@@ -252,7 +276,7 @@ class PostCard extends StatelessWidget {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     final folder = showFolder ? store.folderById(post.folderId) : null;
-    final caption = _caption(post);
+    final caption = _summary(post);
 
     return InkWell(
       onTap: () => openPost(context, post),
@@ -275,11 +299,11 @@ class PostCard extends StatelessWidget {
                     style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 3),
-                  Text(
+                  _summaryText(
+                    post,
                     caption ?? (post.metaStatus == 0 ? 'Preview loads when you are online' : post.url),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.3),
+                    theme.textTheme.bodyMedium?.copyWith(height: 1.3),
+                    theme.colorScheme.primary,
                   ),
                   if (post.note != null) ...[
                     const SizedBox(height: 4),

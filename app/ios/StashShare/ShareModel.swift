@@ -20,6 +20,8 @@ final class ShareModel: ObservableObject {
     @Published var userPicked = false
     @Published var duplicate: SavedPost?
     @Published var confirmation = ""
+    /// The AI's one-line summary of the post, when it answered in time.
+    @Published var aiDescription: String?
 
     private let store: SharedStore?
     private let sharedText: String?
@@ -27,6 +29,7 @@ final class ShareModel: ObservableObject {
     private var deadline: Task<Void, Never>?
     private var savedPostId: String?
     private var pipelineFinished = false
+    private var aiAnswered = false
 
     init(sharedText: String?, close: @escaping () -> Void) {
         self.sharedText = sharedText
@@ -88,11 +91,14 @@ final class ShareModel: ObservableObject {
                 s = .existing(folderId: id, source: .author)
             } else if let id = store.keywordFolder(Array(LinkParser.keywords(m.caption).keys)) {
                 s = .existing(folderId: id, source: .keywords)
-            } else if let caption = m.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            } else if !(m.caption ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || m.thumbnailUrl != nil {
                 do {
-                    s = try await Backend.suggest(
-                        link: l, author: author, caption: caption, folders: folders,
+                    let answer = try await Backend.suggest(
+                        link: l, author: author, caption: m.caption, thumbnailUrl: m.thumbnailUrl, folders: folders,
                         examples: store.folderExamples(), hints: store.keywordHints())
+                    s = answer.suggestion
+                    aiDescription = answer.description
+                    aiAnswered = true
                 } catch { reachable = false }
             }
         }
@@ -170,7 +176,8 @@ final class ShareModel: ObservableObject {
         } else {
             savedPostId = store.insertPost(
                 link: l, folderId: target.id, meta: meta, note: note,
-                needsSuggestion: !userPicked && (suggestion?.isFallback ?? true) && !pipelineFinished)
+                needsSuggestion: !userPicked && (suggestion?.isFallback ?? true) && !pipelineFinished,
+                aiDescription: aiDescription, aiDone: aiAnswered)
             confirmation = "Saved to \(target.name)"
         }
         store.setKv("last_folder", target.id)

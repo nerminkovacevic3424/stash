@@ -41,6 +41,7 @@ final class SharedStore {
           folder_id TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
           meta_status INTEGER NOT NULL DEFAULT 0, meta_attempts INTEGER NOT NULL DEFAULT 0,
           needs_suggestion INTEGER NOT NULL DEFAULT 0,
+          ai_description TEXT, ai_status INTEGER NOT NULL DEFAULT 0,
           deleted INTEGER NOT NULL DEFAULT 0, dirty INTEGER NOT NULL DEFAULT 1)
         """,
         "CREATE INDEX IF NOT EXISTS posts_folder ON posts(folder_id, created_at)",
@@ -74,6 +75,10 @@ final class SharedStore {
         sqlite3_busy_timeout(db, 3000)
         _ = query("PRAGMA journal_mode=WAL")
         for sql in Self.schema { run(sql) }
+        // Columns added after the first release (same migration as repo.dart).
+        let columns = Set(query("PRAGMA table_info(posts)").compactMap { $0["name"] as? String })
+        if !columns.contains("ai_description") { run("ALTER TABLE posts ADD COLUMN ai_description TEXT") }
+        if !columns.contains("ai_status") { run("ALTER TABLE posts ADD COLUMN ai_status INTEGER NOT NULL DEFAULT 0") }
         // sqflite tracks its schema version here; set it so the app does not re-run onCreate.
         if (query("PRAGMA user_version").first?["user_version"] as? Int64 ?? 0) == 0 {
             run("PRAGMA user_version = 1")
@@ -175,19 +180,22 @@ final class SharedStore {
         }
     }
 
-    func insertPost(link: LinkInfo, folderId: String, meta: PostMeta?, note: String, needsSuggestion: Bool) -> String {
+    func insertPost(
+        link: LinkInfo, folderId: String, meta: PostMeta?, note: String, needsSuggestion: Bool,
+        aiDescription: String?, aiDone: Bool
+    ) -> String {
         let id = Self.newId()
         let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         run(
             """
             INSERT INTO posts(id, url, source_url, platform, author, author_name, caption, thumbnail_url, note,
-              folder_id, created_at, updated_at, meta_status, needs_suggestion)
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              folder_id, created_at, updated_at, meta_status, needs_suggestion, ai_description, ai_status)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 id, meta?.url ?? link.url, link.url, link.platform, meta?.author ?? link.author, meta?.authorName,
                 meta?.caption, meta?.thumbnailUrl, cleanNote.isEmpty ? nil : cleanNote, folderId, now, now,
-                (meta?.ok ?? false) ? 1 : 0, needsSuggestion,
+                (meta?.ok ?? false) ? 1 : 0, needsSuggestion, aiDescription, aiDone,
             ]
         )
         return id

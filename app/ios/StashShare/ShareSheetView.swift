@@ -180,7 +180,7 @@ struct ShareSheetView: View {
                 } else {
                     Text(link.platform == "instagram" ? "Instagram post" : "TikTok post").font(.subheadline.weight(.bold))
                 }
-                if let caption = model.meta?.caption, !caption.isEmpty {
+                if let caption = model.aiDescription ?? model.meta?.caption, !caption.isEmpty {
                     Text(caption).font(.footnote).foregroundColor(.secondary).lineLimit(2)
                 } else if model.metaLoading {
                     skeleton(width: 200)

@@ -62,32 +62,35 @@ enum Backend {
         return try? JSONDecoder().decode(PostMeta.self, from: data)
     }
 
-    /// Asks the LLM for a folder. Nil when it has no opinion.
+    /// Asks the AI to describe the post and pick (or propose) a folder for it.
     static func suggest(
-        link: LinkInfo, author: String?, caption: String, folders: [Folder], examples: [String: [String]],
-        hints: [[String: String]]
-    ) async throws -> Suggestion? {
+        link: LinkInfo, author: String?, caption: String?, thumbnailUrl: String?, folders: [Folder],
+        examples: [String: [String]], hints: [[String: String]]
+    ) async throws -> (suggestion: Suggestion?, description: String?) {
         let body: [String: Any] = [
             "platform": link.platform,
             "author": author ?? NSNull(),
-            "caption": caption,
+            "caption": caption ?? NSNull(),
+            "thumbnailUrl": thumbnailUrl ?? NSNull(),
             "hashtags": LinkParser.hashtags(caption),
             "folders": folders.filter { $0.id != unsortedId }.map {
                 ["id": $0.id, "name": $0.name, "examples": examples[$0.id] ?? []] as [String: Any]
             },
             "hints": hints,
         ]
-        guard let data = try await post("/v1/suggest", body: body, timeout: 6),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let s = json["suggestion"] as? [String: Any],
-            let kind = s["kind"] as? String
-        else { return nil }
-        if kind == "existing", let id = s["folderId"] as? String, folders.contains(where: { $0.id == id }) {
-            return .existing(folderId: id, source: .ai)
+        guard let data = try await post("/v1/suggest", body: body, timeout: 12),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return (nil, nil) }
+        let text = (json["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let description = (text?.isEmpty ?? true) ? nil : text
+        var suggestion: Suggestion?
+        if let s = json["suggestion"] as? [String: Any], let kind = s["kind"] as? String {
+            if kind == "existing", let id = s["folderId"] as? String, folders.contains(where: { $0.id == id }) {
+                suggestion = .existing(folderId: id, source: .ai)
+            } else if kind == "new", let name = s["name"] as? String {
+                suggestion = .new(name: name, emoji: s["emoji"] as? String ?? "📁")
+            }
         }
-        if kind == "new", let name = s["name"] as? String {
-            return .new(name: name, emoji: s["emoji"] as? String ?? "📁")
-        }
-        return nil
+        return (suggestion, description)
     }
 }

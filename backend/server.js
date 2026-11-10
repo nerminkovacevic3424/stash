@@ -65,10 +65,10 @@ const routes = {
   'POST /v1/metadata': async (body) => fetchMetadata(urlFrom(body)),
   'POST /v1/suggest': async (body) => {
     try {
-      return { suggestion: await suggestFolder(body) };
+      return await suggestFolder(body); // { description, suggestion }
     } catch (err) {
       console.error('suggest failed:', err?.status ?? '', err?.message);
-      return { suggestion: null }; // the app falls back to last-used / Unsorted
+      return { description: null, suggestion: null }; // the app falls back to last-used / Unsorted
     }
   },
 };

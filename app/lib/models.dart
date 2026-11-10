@@ -59,6 +59,7 @@ class Post {
     this.caption,
     this.thumbnailUrl,
     this.note,
+    this.aiDescription,
     this.metaStatus = 0,
     this.needsSuggestion = false,
   });
@@ -79,6 +80,9 @@ class Post {
   final String? thumbnailUrl;
   final String? note;
 
+  /// One-sentence summary written by the AI from the caption and cover image.
+  final String? aiDescription;
+
   /// 0 = metadata still to fetch, 1 = fetched, 2 = gave up.
   final int metaStatus;
   final bool needsSuggestion;
@@ -95,6 +99,7 @@ class Post {
     caption: r['caption'] as String?,
     thumbnailUrl: r['thumbnail_url'] as String?,
     note: r['note'] as String?,
+    aiDescription: r['ai_description'] as String?,
     metaStatus: r['meta_status'] as int,
     needsSuggestion: r['needs_suggestion'] == 1,
   );
@@ -160,4 +165,13 @@ class FolderSuggestion {
   final SuggestionSource source;
 
   bool get isFallback => source == SuggestionSource.lastUsed || source == SuggestionSource.unsorted;
+}
+
+/// What the backend's AI returned for one post.
+class AiAnswer {
+  const AiAnswer({this.suggestion, this.description});
+  static const empty = AiAnswer();
+
+  final FolderSuggestion? suggestion;
+  final String? description;
 }

@@ -212,7 +212,7 @@ class _ShareSheetState extends State<ShareSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         handle,
-        _Preview(link: link, meta: c.meta, loading: c.metaLoading),
+        _Preview(link: link, meta: c.meta, loading: c.metaLoading, aiDescription: c.aiDescription),
         if (c.duplicate != null) ...[
           const SizedBox(height: 14),
           _DuplicateBanner(folderName: c.duplicateFolder?.name ?? 'your library'),
@@ -329,17 +329,20 @@ class _ShareSheetState extends State<ShareSheet> {
 }
 
 class _Preview extends StatelessWidget {
-  const _Preview({required this.link, required this.meta, required this.loading});
+  const _Preview({required this.link, required this.meta, required this.loading, this.aiDescription});
   final LinkInfo link;
   final PostMeta? meta;
   final bool loading;
+
+  /// Replaces the raw caption once the AI has described the post.
+  final String? aiDescription;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     final author = meta?.author ?? link.author;
-    final caption = meta?.caption;
+    final caption = aiDescription ?? meta?.caption;
     return Row(
       children: [
         PostThumb(url: meta?.thumbnailUrl, platform: link.platform, size: 60),
