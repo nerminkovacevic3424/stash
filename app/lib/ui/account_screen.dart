@@ -65,13 +65,9 @@ class _AccountScreenState extends State<AccountScreen> {
     final List<Widget> body;
     if (!sync.enabled) {
       body = [
-        Text('Sync is not set up in this build', style: theme.textTheme.titleMedium),
+        Text('Sync between devices', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
-        Text(
-          'Your saves are stored on this device. To sync between devices, build the app with '
-          'SUPABASE_URL and SUPABASE_ANON_KEY (see the README).',
-          style: muted,
-        ),
+        Text('Not available in this version. Your saves are stored on this phone only.', style: muted),
       ];
     } else if (user == null) {
       body = [
@@ -136,21 +132,63 @@ class _AccountScreenState extends State<AccountScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          ...body,
-          if (_busy)
-            const Padding(
-              padding: EdgeInsets.only(top: 20),
-              child: Center(child: CircularProgressIndicator()),
+          _Card(
+            icon: Icons.cloud_outlined,
+            child: _ServerSection(store: store),
+          ),
+          const SizedBox(height: 16),
+          _Card(
+            icon: Icons.sync_rounded,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...body,
+                if (_busy)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                if (_message != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Text(_message!, textAlign: TextAlign.center, style: muted),
+                  ),
+              ],
             ),
-          if (_message != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Text(_message!, textAlign: TextAlign.center, style: muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Card extends StatelessWidget {
+  const _Card({required this.icon, required this.child});
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: scheme.surfaceContainerLow, borderRadius: BorderRadius.circular(24)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              width: 40,
+              height: 40,
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, size: 22, color: scheme.onPrimaryContainer),
             ),
-          const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Divider(height: 1)),
-          _ServerSection(store: store),
+          ),
+          child,
         ],
       ),
     );

@@ -5,6 +5,8 @@ import '../models.dart';
 import 'account_screen.dart';
 import 'folder_screen.dart';
 import 'folder_sheets.dart';
+import 'logo.dart';
+import 'post_details.dart';
 import 'post_card.dart';
 import 'reorder_screen.dart';
 import 'search_screen.dart';
@@ -88,6 +90,8 @@ class HomeScreen extends StatelessWidget {
                       padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
                       child: Row(
                         children: [
+                          const StashLogo(size: 44),
+                          const SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,7 +261,7 @@ class _RecentTile extends StatelessWidget {
     label: post.author != null ? 'Post by ${post.author}' : '${post.platform.label} post',
     child: GestureDetector(
       onTap: () => openPost(context, post),
-      onLongPress: () => runPostAction(context, store, post, PostAction.move),
+      onLongPress: () => showPostDetails(context, store, post),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: SizedBox(
@@ -265,7 +269,7 @@ class _RecentTile extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              PostImage(url: post.thumbnailUrl),
+              PostImage(url: post.thumbnailUrl, platform: post.platform),
               Positioned(left: 8, top: 8, child: PlatformBadge(post.platform, size: 22)),
             ],
           ),

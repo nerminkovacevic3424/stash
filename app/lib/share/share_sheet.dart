@@ -345,7 +345,7 @@ class _Preview extends StatelessWidget {
     final caption = aiDescription ?? meta?.caption;
     return Row(
       children: [
-        PostThumb(url: meta?.thumbnailUrl, platform: link.platform, size: 60),
+        PostThumb(url: meta?.thumbnailUrl, platform: link.platform, size: 64, radius: 16),
         const SizedBox(width: 16),
         Expanded(
           child: Column(
@@ -441,6 +441,7 @@ class _FolderChip extends StatelessWidget {
     final scheme = theme.colorScheme;
     final c = controller;
     final loading = c.suggesting;
+    final byAi = !loading && !c.userPicked && c.duplicate == null && c.suggestion?.source == SuggestionSource.ai;
 
     return Material(
       color: scheme.primaryContainer.withValues(alpha: 0.55),
@@ -465,9 +466,20 @@ class _FolderChip extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      loading ? 'Finding the best folder…' : _label(),
-                      style: theme.textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
+                    Row(
+                      children: [
+                        if (byAi) ...[
+                          Icon(Icons.auto_awesome_rounded, size: 13, color: scheme.primary),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(
+                          loading ? 'Finding the best folder…' : (byAi ? 'Suggested by AI' : _label()),
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: byAi ? scheme.primary : scheme.onSurfaceVariant,
+                            fontWeight: byAi ? FontWeight.w700 : null,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     if (loading)

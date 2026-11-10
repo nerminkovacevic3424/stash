@@ -310,6 +310,30 @@ void main() {
 
   testWidgets('settings', (t) => shot(t, 'settings', (_, store) async => AccountScreen(store: store)));
 
+  testWidgets('post details', (t) async {
+    await shot(t, 'post_details', (repo, store) async {
+      final f = store.folders.firstWhere((f) => f.name == 'Recipes');
+      return FolderScreen(store: store, folderId: f.id);
+    }, after: () => t.longPress(find.textContaining('@pasta.grannies')));
+  });
+
+  testWidgets('folder without previews', (t) async {
+    await shot(t, 'folder_no_previews', (repo, store) async {
+      await repo.db.update('posts', {'thumbnail_url': null});
+      await store.reload();
+      final f = store.folders.firstWhere((f) => f.name == 'Travel');
+      return FolderScreen(store: store, folderId: f.id);
+    });
+  });
+
+  testWidgets('share by ai', (t) async {
+    await shot(t, 'share_ai', (repo, _) async {
+      // An author Stash has not seen before, so the folder comes from the AI.
+      await repo.db.update('posts', {'author': 'someone.else'}, where: "author = 'pasta.grannies'");
+      return shareSheet(repo);
+    });
+  });
+
   testWidgets('share', (t) => shot(t, 'share_light', (repo, _) => shareSheet(repo)));
 
   testWidgets('share dark', (t) => shot(t, 'share_dark', (repo, _) => shareSheet(repo), brightness: Brightness.dark));

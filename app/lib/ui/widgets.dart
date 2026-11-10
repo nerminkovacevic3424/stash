@@ -37,26 +37,45 @@ class PlatformBadge extends StatelessWidget {
 /// How post images are loaded. Tests swap this to render without a network.
 ImageProvider Function(String url) postImageProvider = CachedNetworkImageProvider.new;
 
-/// A post image that fills its box, with a soft placeholder while loading or
-/// when there is no (working) image.
+/// A post image that fills its box. While loading, or when there is no
+/// (working) image, it shows a soft tile tinted for the post's platform.
 class PostImage extends StatelessWidget {
-  const PostImage({super.key, required this.url, this.iconSize = 28});
+  const PostImage({super.key, required this.url, this.platform, this.iconSize = 28});
   final String? url;
+  final Platform2? platform;
   final double iconSize;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final dark = scheme.brightness == Brightness.dark;
+    final tint = switch (platform) {
+      Platform2.instagram => const Color(0xFFE1306C),
+      Platform2.tiktok => const Color(0xFF12A594),
+      null => scheme.primary,
+    };
+    final base = scheme.surfaceContainerHighest;
     final placeholder = DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [scheme.surfaceContainerHighest, scheme.surfaceContainer],
+          colors: [
+            Color.alphaBlend(tint.withValues(alpha: dark ? 0.34 : 0.22), base),
+            Color.alphaBlend(tint.withValues(alpha: dark ? 0.12 : 0.07), base),
+          ],
         ),
       ),
       child: Center(
-        child: Icon(Icons.play_arrow_rounded, color: scheme.onSurfaceVariant.withValues(alpha: 0.5), size: iconSize),
+        child: Container(
+          width: iconSize * 1.7,
+          height: iconSize * 1.7,
+          decoration: BoxDecoration(
+            color: scheme.surface.withValues(alpha: dark ? 0.35 : 0.6),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.play_arrow_rounded, color: tint.withValues(alpha: 0.9), size: iconSize),
+        ),
       ),
     );
     if (url == null) return placeholder;
@@ -88,7 +107,7 @@ class PostThumb extends StatelessWidget {
         Positioned.fill(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(radius),
-            child: PostImage(url: url, iconSize: size * 0.4),
+            child: PostImage(url: url, platform: platform, iconSize: size * 0.3),
           ),
         ),
         Positioned(right: -4, bottom: -4, child: PlatformBadge(platform, size: size < 60 ? 20 : 24)),

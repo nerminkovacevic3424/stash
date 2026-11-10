@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/store.dart';
 import '../models.dart';
 import 'folder_sheets.dart';
+import 'post_details.dart';
 import 'widgets.dart';
 
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -122,6 +123,7 @@ Future<String?> _editNote(BuildContext context, Post post) {
   );
 }
 
+/// The "more" affordance on a card: opens the details sheet.
 class _PostMenu extends StatelessWidget {
   const _PostMenu({required this.store, required this.post, required this.child});
   final Store store;
@@ -129,19 +131,10 @@ class _PostMenu extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => PopupMenuButton<PostAction>(
-    tooltip: 'Post actions',
-    padding: EdgeInsets.zero,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    onSelected: (a) => runPostAction(context, store, post, a),
-    itemBuilder: (_) => const [
-      PopupMenuItem(value: PostAction.open, child: Text('Open original')),
-      PopupMenuItem(value: PostAction.move, child: Text('Move to…')),
-      PopupMenuItem(value: PostAction.note, child: Text('Edit note')),
-      PopupMenuItem(value: PostAction.copy, child: Text('Copy link')),
-      PopupMenuItem(value: PostAction.delete, child: Text('Delete')),
-    ],
-    child: child,
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: 'Post details',
+    child: InkResponse(radius: 26, onTap: () => showPostDetails(context, store, post), child: child),
   );
 }
 
@@ -167,7 +160,7 @@ class PostTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () => openPost(context, post),
-        onLongPress: () => runPostAction(context, store, post, PostAction.move),
+        onLongPress: () => showPostDetails(context, store, post),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -177,7 +170,7 @@ class PostTile extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    PostImage(url: post.thumbnailUrl, iconSize: 40),
+                    PostImage(url: post.thumbnailUrl, platform: post.platform, iconSize: 34),
                     const Positioned(
                       left: 0,
                       right: 0,
@@ -280,7 +273,7 @@ class PostCard extends StatelessWidget {
 
     return InkWell(
       onTap: () => openPost(context, post),
-      onLongPress: () => runPostAction(context, store, post, PostAction.move),
+      onLongPress: () => showPostDetails(context, store, post),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 10, 8, 10),
         child: Row(
