@@ -1,0 +1,77 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import '../models.dart';
+import '../services/api.dart';
+import '../services/pending_queue.dart';
+import '../services/suggester.dart';
+import '../services/sync.dart';
+import 'repo.dart';
+
+/// App-wide state for the main app. Screens listen to it and re-query on change.
+class Store extends ChangeNotifier {
+  Store(this.repo, {String? backendUrl}) : api = Api(baseUrl: backendUrl) {
+    suggester = Suggester(repo, api);
+    queue = PendingQueue(repo, api, suggester);
+    sync = SyncService(repo);
+  }
+
+  final Repo repo;
+  final Api api;
+  late final Suggester suggester;
+  late final PendingQueue queue;
+  late final SyncService sync;
+
+  List<Folder> folders = const [];
+
+  /// The newest saves across all folders, for the home screen.
+  List<Post> recent = const [];
+
+  Folder? folderById(String id) {
+    for (final f in folders) {
+      if (f.id == id) return f;
+    }
+    return null;
+  }
+
+  /// Re-reads from disk. The share sheet writes from another process, so call
+  /// this whenever the app comes back to the foreground.
+  Future<void> reload() async {
+    folders = await repo.folders();
+    recent = await repo.posts(limit: 12);
+    notifyListeners();
+  }
+
+  /// Runs a write, refreshes the UI, then syncs in the background.
+  Future<void> mutate(Future<void> Function() write) async {
+    await write();
+    await reload();
+    unawaited(background());
+  }
+
+  /// Pending metadata/suggestions, then cloud sync. Safe to call often.
+  Future<void> background() async {
+    var changed = false;
+    try {
+      changed = await queue.process();
+      changed = await sync.sync() || changed;
+    } catch (e) {
+      debugPrint('background work failed: $e');
+    }
+    if (changed) await reload();
+  }
+
+  /// Moving a post by hand teaches the suggester, like an override in the share sheet.
+  Future<void> movePost(Post post, String folderId) => mutate(() async {
+    await repo.movePosts([post.id], folderId);
+    await suggester.learnFromChoice(
+      platform: post.platform,
+      chosenFolderId: folderId,
+      suggested: null,
+      author: post.author,
+      caption: post.caption,
+    );
+    await repo.setKv('last_folder', folderId);
+  });
+}

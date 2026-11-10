@@ -1,0 +1,19 @@
+# Render blueprint: New > Blueprint, pick this repository, then fill in the keys.
+services:
+  - type: web
+    name: stash-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: TRUST_PROXY
+        value: "1"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: META_APP_TOKEN
+        sync: false
+      - key: APP_KEY
+        sync: false
