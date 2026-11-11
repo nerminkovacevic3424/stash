@@ -18,6 +18,7 @@ class ShareActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        SystemChannel.register(flutterEngine, this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "stash/share").setMethodCallHandler { call, result ->
             when (call.method) {
                 "getSharedText" -> result.success(sharedText())

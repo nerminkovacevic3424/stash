@@ -289,7 +289,10 @@ class _ShareSheetState extends State<ShareSheet> {
       onPressed: () async {
         final picked = await pickReminder(context, current: when);
         if (picked == null) return;
-        setState(() => c.remindAt = picked == clearReminder ? null : picked);
+        if (picked == clearReminder) return setState(() => c.remindAt = null);
+        // Ask now, while the sheet is open; after Save it closes too fast to ask.
+        if (!mounted || !await Reminders.ensurePermission(context)) return;
+        if (mounted) setState(() => c.remindAt = picked);
       },
       icon: Icon(when == null ? Icons.notifications_none_rounded : Icons.notifications_active_rounded, size: 18),
       label: Text(when == null ? 'Remind me' : reminderLabel(when)),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/store.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
+import '../services/reminders.dart';
 import 'auth_screens.dart';
 
 /// Settings: the signed-in account, and the server the app talks to.
@@ -17,6 +18,8 @@ class AccountScreen extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
         _AccountSection(auth: store.auth),
+        const SizedBox(height: 16),
+        const _Card(icon: Icons.notifications_none_rounded, child: _NotificationsSection()),
         const SizedBox(height: 16),
         _Card(
           icon: Icons.cloud_outlined,
@@ -60,6 +63,99 @@ class _Card extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Whether reminders can reach the user, and a way to fix it when they cannot.
+class _NotificationsSection extends StatefulWidget {
+  const _NotificationsSection();
+
+  @override
+  State<_NotificationsSection> createState() => _NotificationsSectionState();
+}
+
+class _NotificationsSectionState extends State<_NotificationsSection> with WidgetsBindingObserver {
+  bool? _on;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _check();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Coming back from the system settings page: look again.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _check();
+  }
+
+  Future<void> _check() async {
+    final on = await Reminders.enabled();
+    if (mounted) setState(() => _on = on);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final on = _on;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text('Notifications', style: theme.textTheme.titleMedium)),
+            if (on != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: on ? const Color(0x2230A46C) : scheme.errorContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  on ? 'On' : 'Off',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: on ? const Color(0xFF218358) : scheme.onErrorContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          on == false
+              ? 'Reminders cannot reach you while notifications are off.'
+              : 'Used only for the reminders you set on saved posts.',
+          style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.4),
+        ),
+        const SizedBox(height: 16),
+        if (on == false)
+          FilledButton.tonal(
+            onPressed: () async {
+              await Reminders.ensurePermission(context);
+              await _check();
+            },
+            child: const Text('Turn on notifications'),
+          )
+        else
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            onPressed: Reminders.openSettings,
+            child: const Text('Notification settings'),
+          ),
+      ],
     );
   }
 }

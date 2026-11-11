@@ -110,6 +110,7 @@ Future<void> runPostAction(BuildContext context, Store store, Post post, PostAct
         await store.mutate(() => store.repo.setReminder(post.id, null));
         return;
       }
+      if (!context.mounted || !await Reminders.ensurePermission(context)) return;
       final ok = await Reminders.schedule(
         post.id,
         when,
@@ -121,7 +122,9 @@ Future<void> runPostAction(BuildContext context, Store store, Post post, PostAct
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              ok ? 'Reminder set for ${reminderLabel(when)}' : 'Allow notifications for Stash to get reminders',
+              ok
+                  ? 'Reminder set for ${reminderLabel(when)}'
+                  : 'Could not set the reminder: ${Reminders.lastError ?? 'unknown error'}',
             ),
           ),
         );

@@ -28,6 +28,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        SystemChannel.register(flutterEngine, this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "stash/open").setMethodCallHandler { call, result ->
             when (call.method) {
                 "openInApp" -> {

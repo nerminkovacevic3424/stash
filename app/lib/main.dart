@@ -16,6 +16,7 @@ import 'ui/post_details.dart';
 import 'ui/theme.dart';
 
 const _onboardedKey = 'onboarded';
+const _askedNotificationsKey = 'asked_notifications';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,6 +72,7 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
 
     // Tapping a reminder opens that post's details.
     Reminders.onOpen = _showPost;
+    _askForNotificationsOnce();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final id = await Reminders.launchPostId();
       if (id != null) _showPost(id);
@@ -84,7 +86,23 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
     unawaited(store.background());
   }
 
-  void _onAuthChanged() => setState(() {});
+  void _onAuthChanged() {
+    setState(() {});
+    _askForNotificationsOnce();
+  }
+
+  /// The first time the home screen is reached, offer to turn notifications
+  /// on, so reminders work later without a detour. Asked once; after that the
+  /// prompt only appears when a reminder is being set.
+  void _askForNotificationsOnce() {
+    if (_onboarding || !store.auth.signedIn) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (await store.repo.kv(_askedNotificationsKey) != null) return;
+      await store.repo.setKv(_askedNotificationsKey, '1');
+      final context = _navigator.currentContext;
+      if (context != null && context.mounted) await Reminders.ensurePermission(context);
+    });
+  }
 
   Future<void> _showPost(String id) async {
     final post = await store.repo.post(id);
@@ -124,6 +142,7 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
             onDone: () {
               unawaited(store.repo.setKv(_onboardedKey, '1'));
               setState(() => _onboarding = false);
+              _askForNotificationsOnce();
             },
           )
         : store.auth.signedIn

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources that are only referenced by name at run time (the notification
+     plugin looks the reminder icon up as a string). Without this the release
+     build's resource shrinker removes them and reminders fail to schedule. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_stash,@mipmap/ic_launcher" />
