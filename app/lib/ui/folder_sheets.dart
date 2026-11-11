@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../data/store.dart';
 import '../models.dart';
+import 'dialogs.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -160,29 +161,38 @@ Future<void> editFolderFlow(BuildContext context, Store store, Folder folder) as
 /// Asks what to do with the folder's posts, then deletes. Returns true if deleted.
 Future<bool> deleteFolderFlow(BuildContext context, Store store, Folder folder) async {
   final n = folder.count;
-  final deletePosts = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Delete "${folder.name}"?'),
-      content: Text(
-        n == 0
-            ? 'This folder is empty.'
-            : 'It holds $n saved ${n == 1 ? 'post' : 'posts'}. Keep them in Unsorted, or delete them with the folder.',
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        if (n > 0)
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
-            child: const Text('Delete posts too'),
-          ),
-        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(n == 0 ? 'Delete' : 'Keep posts')),
+  final bool? deletePosts;
+  if (n == 0) {
+    final ok = await confirm(
+      context,
+      icon: Icons.delete_outline_rounded,
+      title: 'Delete "${folder.name}"?',
+      message: 'This folder is empty.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    deletePosts = ok ? false : null;
+  } else {
+    final posts = '$n ${n == 1 ? 'post' : 'posts'}';
+    deletePosts = await chooseOption<bool>(
+      context,
+      title: 'Delete "${folder.name}"?',
+      message: 'It holds $posts. Choose what happens to ${n == 1 ? 'it' : 'them'}.',
+      options: [
+        Option(false, Icons.inbox_outlined, 'Keep the posts', 'The folder goes; its $posts move to Unsorted.'),
+        Option(
+          true,
+          Icons.delete_outline_rounded,
+          'Delete the posts too',
+          'The folder and its $posts are removed from Stash.',
+          destructive: true,
+        ),
       ],
-    ),
-  );
+    );
+  }
   if (deletePosts == null) return false;
-  await store.mutate(() => store.repo.deleteFolder(folder.id, deletePosts: deletePosts));
+  final withPosts = deletePosts;
+  await store.mutate(() => store.repo.deleteFolder(folder.id, deletePosts: withPosts));
   return true;
 }
 

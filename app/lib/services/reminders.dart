@@ -4,6 +4,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../ui/dialogs.dart';
+
 /// "Watch this later" nudges, delivered as local notifications. Nothing
 /// leaves the phone. Works from both the main app and the share sheet.
 class Reminders {
@@ -89,23 +91,13 @@ class Reminders {
   static Future<bool> ensurePermission(BuildContext context) async {
     if (await enabled()) return true;
     if (!context.mounted) return false;
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.notifications_active_outlined),
-        title: const Text('Turn on notifications'),
-        content: const Text(
-          'Stash uses notifications only for the reminders you set, to bring a saved post back at the time you chose.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Not now')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Turn on'),
-          ),
-        ],
-      ),
+    final go = await confirm(
+      context,
+      icon: Icons.notifications_active_outlined,
+      title: 'Turn on notifications?',
+      message: 'Stash uses them only for the reminders you set, to bring a saved post back at the time you chose.',
+      confirmLabel: 'Turn on',
+      cancelLabel: 'Not now',
     );
     if (go != true) return false;
     if (await requestPermission()) return true;
@@ -113,23 +105,14 @@ class Reminders {
     if (!context.mounted) return false;
 
     // The system declined to ask (it was refused before). Send them to settings.
-    final open = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Notifications are blocked'),
-        content: const Text(
-          'Your phone is not letting Stash ask again. Open settings, turn on "Allow notifications" for Stash, '
+    final open = await confirm(
+      context,
+      icon: Icons.notifications_off_outlined,
+      title: 'Notifications are blocked',
+      message:
+          'Your phone is not letting Stash ask again. Open settings, turn on "Allow notifications", '
           'then come back and set the reminder.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Open settings'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Open settings',
     );
     if (open == true) await openSettings();
     return false;

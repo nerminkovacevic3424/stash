@@ -9,6 +9,7 @@ import '../data/store.dart';
 import '../models.dart';
 import '../services/link_parser.dart';
 import '../services/reminders.dart';
+import 'dialogs.dart';
 import 'folder_sheets.dart';
 import 'post_details.dart';
 import 'widgets.dart';
@@ -132,46 +133,27 @@ Future<void> runPostAction(BuildContext context, Store store, Post post, PostAct
     case PostAction.copy:
       await Clipboard.setData(ClipboardData(text: post.url));
     case PostAction.delete:
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Delete this saved post?'),
-          content: const Text('It is removed from Stash only. The original post is not affected.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
-              child: const Text('Delete'),
-            ),
-          ],
-        ),
+      final ok = await confirm(
+        context,
+        icon: Icons.delete_outline_rounded,
+        title: 'Delete this saved post?',
+        message: 'It is removed from Stash only. The original post is not affected.',
+        confirmLabel: 'Delete',
+        destructive: true,
       );
       if (ok == true) await store.mutate(() => store.repo.deletePost(post.id));
   }
 }
 
-Future<String?> _editNote(BuildContext context, Post post) {
-  final controller = TextEditingController(text: post.note ?? '');
-  return showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Note'),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        minLines: 2,
-        maxLines: 5,
-        textCapitalization: TextCapitalization.sentences,
-        decoration: const InputDecoration(hintText: 'Why did you save this?'),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
-      ],
-    ),
-  );
-}
+Future<String?> _editNote(BuildContext context, Post post) => promptText(
+  context,
+  title: post.note == null ? 'Add a note' : 'Edit note',
+  message: 'Only you see this. Clear it to remove the note.',
+  hint: 'Why did you save this?',
+  initial: post.note ?? '',
+  maxLines: 5,
+  allowEmpty: true,
+);
 
 /// The "more" affordance on a card: opens the details sheet.
 class _PostMenu extends StatelessWidget {

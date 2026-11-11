@@ -109,7 +109,19 @@ ThemeData buildTheme(Brightness brightness, {String? fontFamily, List<String>? f
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(textStyle: style(size: 15, weight: FontWeight.w600)),
     ),
-    popupMenuTheme: PopupMenuThemeData(textStyle: style(size: 15, color: scheme.onSurface)),
+    popupMenuTheme: PopupMenuThemeData(
+      textStyle: style(size: 15, color: scheme.onSurface),
+      color: dark ? const Color(0xFF232328) : Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: dark ? const Color(0xFF1A1A1E) : Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      titleTextStyle: style(size: 20, weight: FontWeight.w700, color: scheme.onSurface),
+    ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     chipTheme: ChipThemeData(
       labelStyle: style(size: 14, weight: FontWeight.w500, color: scheme.onSurface),

@@ -8,6 +8,7 @@ import '../models.dart';
 import '../services/link_parser.dart';
 import '../share/share_sheet.dart';
 import 'account_screen.dart';
+import 'dialogs.dart';
 import 'folder_screen.dart';
 import 'folder_sheets.dart';
 import 'logo.dart';
@@ -33,7 +34,12 @@ class HomeScreen extends StatelessWidget {
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            SheetHeader(
+              title: '${folder.emoji}  ${folder.name}',
+              subtitle: '${folder.count} ${folder.count == 1 ? 'post' : 'posts'}',
+            ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('Rename, emoji and color'),
@@ -272,25 +278,15 @@ Future<void> addLinkFlow(BuildContext context, Store store) async {
     clip = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
   } catch (_) {}
   if (!context.mounted) return;
-  final controller = TextEditingController(text: extractUrl(clip) ?? '');
-  final text = await showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Add a link'),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        keyboardType: TextInputType.url,
-        autocorrect: false,
-        minLines: 1,
-        maxLines: 4,
-        decoration: const InputDecoration(hintText: 'Paste a link, or a folder someone sent you'),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Continue')),
-      ],
-    ),
+  final text = await promptText(
+    context,
+    title: 'Add a link',
+    message: 'Paste a video or post link. A folder someone sent you from Stash works too.',
+    hint: 'https://…',
+    initial: extractUrl(clip) ?? '',
+    confirmLabel: 'Continue',
+    maxLines: 4,
+    keyboardType: TextInputType.url,
   );
   if (text == null || !context.mounted) return;
   if (extractUrl(text) == null) {

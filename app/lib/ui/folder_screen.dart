@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/store.dart';
 import '../models.dart';
+import 'dialogs.dart';
 import 'folder_sheets.dart';
 import 'post_card.dart';
 import 'widgets.dart';
@@ -101,20 +102,13 @@ class _FolderScreenState extends State<FolderScreen> {
 
   Future<void> _deleteSelected() async {
     final n = _selected.length;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete $n saved ${n == 1 ? 'post' : 'posts'}?'),
-        content: const Text('They are removed from Stash only. The original posts are not affected.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final ok = await confirm(
+      context,
+      icon: Icons.delete_outline_rounded,
+      title: 'Delete $n saved ${n == 1 ? 'post' : 'posts'}?',
+      message: 'They are removed from Stash only. The original posts are not affected.',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
     if (ok == true) await _bulk(store.repo.deletePosts, 'Deleted $n');
   }

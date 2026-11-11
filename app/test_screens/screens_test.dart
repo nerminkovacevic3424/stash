@@ -20,6 +20,7 @@ import 'package:stash/services/reminders.dart';
 import 'package:stash/share/share_sheet.dart';
 import 'package:stash/ui/account_screen.dart';
 import 'package:stash/ui/auth_screens.dart';
+import 'package:stash/ui/dialogs.dart';
 import 'package:stash/ui/folder_screen.dart';
 import 'package:stash/ui/folder_sheets.dart';
 import 'package:stash/ui/home_screen.dart';
@@ -382,6 +383,49 @@ void main() {
   );
 
   testWidgets('sign up', (t) => shot(t, 'sign_up', (_, store) async => SignUpScreen(auth: store.auth)));
+
+  testWidgets('confirm dialog', (t) async {
+    await shot(
+      t,
+      'dialog_confirm',
+      (_, store) async => Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: TextButton(
+              onPressed: () => confirm(
+                context,
+                icon: Icons.delete_outline_rounded,
+                title: 'Delete this saved post?',
+                message: 'It is removed from Stash only. The original post is not affected.',
+                confirmLabel: 'Delete',
+                destructive: true,
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+      after: () => t.tap(find.text('open')),
+    );
+  });
+
+  testWidgets('delete folder', (t) async {
+    await shot(
+      t,
+      'dialog_delete_folder',
+      (_, store) async => Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: TextButton(
+              onPressed: () => deleteFolderFlow(context, store, store.folders.firstWhere((f) => f.name == 'Recipes')),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+      after: () => t.tap(find.text('open')),
+    );
+  });
 
   testWidgets('custom reminder', (t) async {
     await shot(

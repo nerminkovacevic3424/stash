@@ -4,6 +4,7 @@ import '../data/store.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/reminders.dart';
+import 'dialogs.dart';
 import 'auth_screens.dart';
 
 /// Settings: the signed-in account, and the server the app talks to.
@@ -169,23 +170,12 @@ class _AccountSection extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _editName(BuildContext context, AuthUser user) async {
-    final controller = TextEditingController(text: user.name);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Your name'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          onSubmitted: (v) => Navigator.pop(context, v),
-          decoration: const InputDecoration(hintText: 'Name'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
-        ],
-      ),
+    final name = await promptText(
+      context,
+      title: 'Your name',
+      hint: 'Name',
+      initial: user.name,
+      capitalization: TextCapitalization.words,
     );
     if (name != null && name.trim().isNotEmpty) await auth.updateName(name);
   }
@@ -199,16 +189,12 @@ class _AccountSection extends StatelessWidget {
   }
 
   Future<void> _signOut(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text('Your saved posts stay on this phone and are here when you sign back in.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sign out')),
-        ],
-      ),
+    final ok = await confirm(
+      context,
+      icon: Icons.logout_rounded,
+      title: 'Sign out?',
+      message: 'Your saved posts stay on this phone and are here when you sign back in.',
+      confirmLabel: 'Sign out',
     );
     if (ok != true || !context.mounted) return;
     // Back to the root first; signing out swaps it for the sign-in screen.
@@ -217,25 +203,16 @@ class _AccountSection extends StatelessWidget {
   }
 
   Future<void> _delete(BuildContext context, AuthUser user) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete your account?'),
-        content: Text(
-          user.isDemo
-              ? 'The demo account cannot be deleted. You will be signed out instead.'
-              : 'The account ${user.email} is removed from this phone and cannot be recovered. '
-                    'Your saved posts are not deleted.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
-            child: Text(user.isDemo ? 'Sign out' : 'Delete account'),
-          ),
-        ],
-      ),
+    final ok = await confirm(
+      context,
+      icon: Icons.person_remove_outlined,
+      title: user.isDemo ? 'Leave the demo account?' : 'Delete your account?',
+      message: user.isDemo
+          ? 'The demo account cannot be deleted, so this signs you out. Your saved posts stay on this phone.'
+          : 'The account ${user.email} is removed from this phone and cannot be recovered. '
+                'Your saved posts are not deleted.',
+      confirmLabel: user.isDemo ? 'Sign out' : 'Delete account',
+      destructive: !user.isDemo,
     );
     if (ok != true || !context.mounted) return;
     Navigator.of(context).popUntil((r) => r.isFirst);
