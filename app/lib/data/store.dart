@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/pending_queue.dart';
 import '../services/suggester.dart';
 import '../services/sync.dart';
@@ -15,6 +16,7 @@ class Store extends ChangeNotifier {
     suggester = Suggester(repo, this.api);
     queue = PendingQueue(repo, this.api, suggester);
     sync = SyncService(repo);
+    auth = Auth(repo);
   }
 
   final Repo repo;
@@ -22,6 +24,7 @@ class Store extends ChangeNotifier {
   late final Suggester suggester;
   late final PendingQueue queue;
   late final SyncService sync;
+  late final Auth auth;
 
   List<Folder> folders = const [];
 

@@ -1,198 +1,307 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
 import '../data/store.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
+import 'auth_screens.dart';
 
-/// Optional account for syncing between devices. Everything works without one.
-class AccountScreen extends StatefulWidget {
+/// Settings: the signed-in account, and the server the app talks to.
+class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key, required this.store});
   final Store store;
 
   @override
-  State<AccountScreen> createState() => _AccountScreenState();
-}
-
-class _AccountScreenState extends State<AccountScreen> {
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  bool _busy = false;
-  String? _message;
-
-  Store get store => widget.store;
-
-  @override
-  void dispose() {
-    _email.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _run(Future<String?> Function() action) async {
-    setState(() {
-      _busy = true;
-      _message = null;
-    });
-    String? message;
-    try {
-      message = await action();
-    } on AuthException catch (e) {
-      message = e.message;
-    } catch (_) {
-      message = 'Could not reach the sync server. Check your connection and try again.';
-    }
-    if (mounted) {
-      setState(() {
-        _busy = false;
-        _message = message;
-      });
-    }
-  }
-
-  Future<String?> _syncNow() async {
-    await store.sync.sync();
-    await store.reload();
-    return 'Synced just now';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant, height: 1.4);
-    final sync = store.sync;
-    final user = sync.user;
-
-    final List<Widget> body;
-    if (!sync.enabled) {
-      body = [
-        Text('Sync between devices', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Text('Not available in this version. Your saves are stored on this phone only.', style: muted),
-      ];
-    } else if (user == null) {
-      body = [
-        Text('Sync between devices', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Text('Optional. Without an account, your saves stay on this device.', style: muted),
-        const SizedBox(height: 20),
-        TextField(
-          controller: _email,
-          keyboardType: TextInputType.emailAddress,
-          autofillHints: const [AutofillHints.email],
-          decoration: const InputDecoration(hintText: 'Email'),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Settings')),
+    body: ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      children: [
+        _AccountSection(auth: store.auth),
+        const SizedBox(height: 16),
+        _Card(
+          icon: Icons.cloud_outlined,
+          child: _ServerSection(store: store),
         ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _password,
-          obscureText: true,
-          autofillHints: const [AutofillHints.password],
-          decoration: const InputDecoration(hintText: 'Password'),
-        ),
-        const SizedBox(height: 20),
-        FilledButton(
-          onPressed: _busy
-              ? null
-              : () => _run(() async {
-                  await sync.signIn(_email.text.trim(), _password.text);
-                  return _syncNow();
-                }),
-          child: const Text('Sign in'),
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: _busy
-              ? null
-              : () => _run(() async {
-                  final signedIn = await sync.signUp(_email.text.trim(), _password.text);
-                  return signedIn ? _syncNow() : 'Check your inbox to confirm your email, then sign in.';
-                }),
-          child: const Text('Create account'),
-        ),
-      ];
-    } else {
-      body = [
-        Text(user.email ?? 'Signed in', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Text('Folders and saved posts sync automatically when the app is open.', style: muted),
-        const SizedBox(height: 20),
-        FilledButton(onPressed: _busy ? null : () => _run(_syncNow), child: const Text('Sync now')),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: _busy
-              ? null
-              : () => _run(() async {
-                  await sync.signOut();
-                  return null;
-                }),
-          child: const Text('Sign out'),
-        ),
-      ];
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-        children: [
-          _Card(
-            icon: Icons.cloud_outlined,
-            child: _ServerSection(store: store),
-          ),
-          const SizedBox(height: 16),
-          _Card(
-            icon: Icons.sync_rounded,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ...body,
-                if (_busy)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 20),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                if (_message != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: Text(_message!, textAlign: TextAlign.center, style: muted),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }
 
 class _Card extends StatelessWidget {
-  const _Card({required this.icon, required this.child});
-  final IconData icon;
+  const _Card({required this.child, this.icon, this.padding = const EdgeInsets.all(20)});
+  final IconData? icon;
   final Widget child;
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: scheme.surfaceContainerLow, borderRadius: BorderRadius.circular(24)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              width: 40,
-              height: 40,
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
-              child: Icon(icon, size: 22, color: scheme.onPrimaryContainer),
-            ),
-          ),
-          child,
-        ],
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (icon != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
+                  child: Icon(icon, size: 22, color: scheme.onPrimaryContainer),
+                ),
+              ),
+            child,
+          ],
+        ),
       ),
     );
   }
+}
+
+/// Profile, password, sign out and delete account.
+class _AccountSection extends StatelessWidget {
+  const _AccountSection({required this.auth});
+  final Auth auth;
+
+  void _snack(BuildContext context, String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+  Future<void> _editName(BuildContext context, AuthUser user) async {
+    final controller = TextEditingController(text: user.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Your name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          onSubmitted: (v) => Navigator.pop(context, v),
+          decoration: const InputDecoration(hintText: 'Name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (name != null && name.trim().isNotEmpty) await auth.updateName(name);
+  }
+
+  Future<void> _changePassword(BuildContext context) async {
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _PasswordDialog(auth: auth),
+    );
+    if (changed == true && context.mounted) _snack(context, 'Password changed');
+  }
+
+  Future<void> _signOut(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text('Your saved posts stay on this phone and are here when you sign back in.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sign out')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    // Back to the root first; signing out swaps it for the sign-in screen.
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    await auth.signOut();
+  }
+
+  Future<void> _delete(BuildContext context, AuthUser user) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: Text(
+          user.isDemo
+              ? 'The demo account cannot be deleted. You will be signed out instead.'
+              : 'The account ${user.email} is removed from this phone and cannot be recovered. '
+                    'Your saved posts are not deleted.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            child: Text(user.isDemo ? 'Sign out' : 'Delete account'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    await auth.deleteAccount();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: auth,
+    builder: (context, _) {
+      final theme = Theme.of(context);
+      final scheme = theme.colorScheme;
+      final user = auth.user;
+      if (user == null) return const SizedBox.shrink();
+
+      Widget row(IconData icon, String label, VoidCallback onTap, {Color? color, String? value}) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        leading: Icon(icon, color: color ?? scheme.onSurfaceVariant),
+        title: Text(label, style: TextStyle(color: color)),
+        trailing: value != null
+            ? Text(value, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant))
+            : Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+        onTap: onTap,
+      );
+
+      return _Card(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: scheme.primary,
+                    child: Text(
+                      user.initial,
+                      style: TextStyle(color: scheme.onPrimary, fontSize: 22, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user.name.isEmpty ? 'Your account' : user.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          user.email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (user.isDemo)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  'You are on the demo account. Accounts are kept on this phone for now and do not sync.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, height: 1.4),
+                ),
+              ),
+            row(Icons.badge_outlined, 'Name', () => _editName(context, user), value: user.name),
+            if (!user.isDemo) row(Icons.lock_outline_rounded, 'Change password', () => _changePassword(context)),
+            row(Icons.logout_rounded, 'Sign out', () => _signOut(context)),
+            row(Icons.delete_outline_rounded, 'Delete account', () => _delete(context, user), color: scheme.error),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _PasswordDialog extends StatefulWidget {
+  const _PasswordDialog({required this.auth});
+  final Auth auth;
+
+  @override
+  State<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends State<_PasswordDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _current = TextEditingController();
+  final _next = TextEditingController();
+  final _confirm = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _current.dispose();
+    _next.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      await widget.auth.changePassword(current: _current.text, next: _next.text);
+      if (mounted) Navigator.pop(context, true);
+    } on AuthError catch (e) {
+      setState(() => _error = e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Change password'),
+    content: Form(
+      key: _formKey,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PasswordField(
+              controller: _current,
+              hint: 'Current password',
+              textInputAction: TextInputAction.next,
+              validator: (v) => (v ?? '').isEmpty ? 'Enter your current password' : null,
+            ),
+            const SizedBox(height: 12),
+            PasswordField(
+              controller: _next,
+              hint: 'New password',
+              autofillHints: const [AutofillHints.newPassword],
+              textInputAction: TextInputAction.next,
+              validator: Auth.validatePassword,
+            ),
+            const SizedBox(height: 12),
+            PasswordField(
+              controller: _confirm,
+              hint: 'Repeat new password',
+              autofillHints: const [AutofillHints.newPassword],
+              validator: (v) => v == _next.text ? null : 'The two passwords do not match',
+              onSubmitted: _save,
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      TextButton(onPressed: _save, child: const Text('Change')),
+    ],
+  );
 }
 
 /// Where previews and folder suggestions come from. Lets one build of the app
@@ -247,7 +356,7 @@ class _ServerSectionState extends State<_ServerSection> {
         Text('Server', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
         Text(
-          'Previews and smart folder suggestions come from your Stash server. '
+          'The AI (descriptions, folders, search) runs on your Stash server. '
           'Saving still works without it, into the last used folder.',
           style: muted,
         ),
@@ -276,7 +385,7 @@ class _ServerSectionState extends State<_ServerSection> {
                 Expanded(
                   child: Text(
                     _ok!
-                        ? 'Connected. New saves will get previews and suggestions.'
+                        ? 'Connected. New saves will get descriptions and suggestions.'
                         : 'No answer from this address. Check it and that the server is running.',
                     style: muted,
                   ),

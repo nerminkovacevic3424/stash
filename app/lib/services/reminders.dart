@@ -107,45 +107,89 @@ List<(String, DateTime)> reminderChoices(DateTime now) {
   ];
 }
 
-/// Bottom sheet of [reminderChoices]. Returns the chosen time, or
-/// [clearReminder] when the user removes an existing one.
+/// Returned by [pickReminder] when the user removes an existing reminder.
 final clearReminder = DateTime.fromMillisecondsSinceEpoch(0);
 
-Future<DateTime?> pickReminder(BuildContext context, {DateTime? current}) => showModalBottomSheet<DateTime>(
-  context: context,
-  builder: (context) => SafeArea(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-          child: Text(
-            'Remind me',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+/// Bottom sheet with the ready-made times and "Pick date and time". Returns
+/// the chosen moment, [clearReminder], or null when dismissed.
+Future<DateTime?> pickReminder(BuildContext context, {DateTime? current}) async {
+  const custom = 'custom';
+  final choice = await showModalBottomSheet<Object>(
+    context: context,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              'Remind me',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
           ),
-        ),
-        for (final (label, time) in reminderChoices(DateTime.now()))
+          for (final (label, time) in reminderChoices(DateTime.now()))
+            ListTile(
+              leading: const Icon(Icons.notifications_none_rounded),
+              title: Text(label),
+              onTap: () => Navigator.pop(context, time),
+            ),
           ListTile(
-            leading: const Icon(Icons.notifications_none_rounded),
-            title: Text(label),
-            onTap: () => Navigator.pop(context, time),
+            leading: const Icon(Icons.edit_calendar_outlined),
+            title: const Text('Pick date and time'),
+            onTap: () => Navigator.pop(context, custom),
           ),
-        if (current != null)
-          ListTile(
-            leading: Icon(Icons.notifications_off_outlined, color: Theme.of(context).colorScheme.error),
-            title: Text('Remove reminder', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            onTap: () => Navigator.pop(context, clearReminder),
-          ),
-        const SizedBox(height: 8),
-      ],
+          if (current != null)
+            ListTile(
+              leading: Icon(Icons.notifications_off_outlined, color: Theme.of(context).colorScheme.error),
+              title: Text('Remove reminder', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              onTap: () => Navigator.pop(context, clearReminder),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
     ),
-  ),
-);
+  );
+  if (choice is DateTime) return choice;
+  if (choice != custom || !context.mounted) return null;
+  return pickCustomReminder(context, initial: current);
+}
+
+/// Date picker, then time picker. Null when cancelled or when the chosen
+/// moment has already passed.
+Future<DateTime?> pickCustomReminder(BuildContext context, {DateTime? initial}) async {
+  final now = DateTime.now();
+  final start = initial != null && initial.isAfter(now) ? initial : now.add(const Duration(hours: 1));
+  final date = await showDatePicker(
+    context: context,
+    initialDate: start,
+    firstDate: DateTime(now.year, now.month, now.day),
+    lastDate: now.add(const Duration(days: 365)),
+    helpText: 'Remind me on',
+  );
+  if (date == null || !context.mounted) return null;
+  final time = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(start),
+    helpText: 'At what time',
+  );
+  if (time == null) return null;
+  final when = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  if (!when.isAfter(DateTime.now())) {
+    if (context.mounted) {
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(const SnackBar(content: Text('Pick a time that is still ahead')));
+    }
+    return null;
+  }
+  return when;
+}
 
 const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-/// "today 20:00", "Sat 10:00".
+const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/// "today 20:00", "Sat 10:00", "24 Dec 09:30".
 String reminderLabel(DateTime when) {
   final now = DateTime.now();
   final days = DateTime(when.year, when.month, when.day).difference(DateTime(now.year, now.month, now.day)).inDays;
@@ -153,7 +197,8 @@ String reminderLabel(DateTime when) {
   final day = switch (days) {
     0 => 'today',
     1 => 'tomorrow',
-    _ => _days[when.weekday - 1],
+    < 7 => _days[when.weekday - 1],
+    _ => '${when.day} ${_months[when.month - 1]}',
   };
   return '$day $time';
 }

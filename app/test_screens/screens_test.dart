@@ -16,8 +16,10 @@ import 'package:stash/data/repo.dart';
 import 'package:stash/data/store.dart';
 import 'package:stash/models.dart';
 import 'package:stash/services/api.dart';
+import 'package:stash/services/reminders.dart';
 import 'package:stash/share/share_sheet.dart';
 import 'package:stash/ui/account_screen.dart';
+import 'package:stash/ui/auth_screens.dart';
 import 'package:stash/ui/folder_screen.dart';
 import 'package:stash/ui/folder_sheets.dart';
 import 'package:stash/ui/home_screen.dart';
@@ -365,7 +367,36 @@ void main() {
     );
   });
 
-  testWidgets('settings', (t) => shot(t, 'settings', (_, store) async => AccountScreen(store: store)));
+  testWidgets('settings', (t) async {
+    await shot(t, 'settings', (_, store) async {
+      await store.auth.signUp(name: 'Nermin', email: 'nermin@example.com', password: 'secret1');
+      return AccountScreen(store: store);
+    });
+  });
+
+  testWidgets('sign in', (t) => shot(t, 'sign_in', (_, store) async => SignInScreen(auth: store.auth)));
+
+  testWidgets(
+    'sign in dark',
+    (t) => shot(t, 'sign_in_dark', (_, store) async => SignInScreen(auth: store.auth), brightness: Brightness.dark),
+  );
+
+  testWidgets('sign up', (t) => shot(t, 'sign_up', (_, store) async => SignUpScreen(auth: store.auth)));
+
+  testWidgets('custom reminder', (t) async {
+    await shot(
+      t,
+      'reminder_sheet',
+      (_, store) async => Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: TextButton(onPressed: () => pickReminder(context), child: const Text('open')),
+          ),
+        ),
+      ),
+      after: () => t.tap(find.text('open')),
+    );
+  });
 
   testWidgets('folder expanded', (t) async {
     await shot(t, 'folder_expanded', (repo, store) async {

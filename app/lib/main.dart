@@ -9,6 +9,7 @@ import 'services/api.dart';
 import 'services/reminders.dart';
 import 'services/sync.dart';
 import 'share/share_sheet.dart';
+import 'ui/auth_screens.dart';
 import 'ui/home_screen.dart';
 import 'ui/onboarding_screen.dart';
 import 'ui/post_details.dart';
@@ -22,6 +23,7 @@ Future<void> main() async {
   await SyncService.init();
   final store = Store(repo, backendUrl: await repo.kv(backendUrlKey));
   await store.reload();
+  await store.auth.load();
   // People who already have saves do not need the tour.
   final onboarded = await repo.kv(_onboardedKey) != null || store.total > 0;
   runApp(StashApp(store: store, showOnboarding: !onboarded));
@@ -61,6 +63,7 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    store.auth.addListener(_onAuthChanged);
     _wakeAndWork();
     _connectivity = Connectivity().onConnectivityChanged.listen((results) {
       if (results.any((r) => r != ConnectivityResult.none)) unawaited(store.background());
@@ -80,6 +83,8 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
     unawaited(store.api.ping());
     unawaited(store.background());
   }
+
+  void _onAuthChanged() => setState(() {});
 
   Future<void> _showPost(String id) async {
     final post = await store.repo.post(id);
@@ -102,6 +107,7 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    store.auth.removeListener(_onAuthChanged);
     _connectivity?.cancel();
     super.dispose();
   }
@@ -120,6 +126,8 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
               setState(() => _onboarding = false);
             },
           )
-        : HomeScreen(store: store),
+        : store.auth.signedIn
+        ? HomeScreen(store: store)
+        : SignInScreen(auth: store.auth),
   );
 }

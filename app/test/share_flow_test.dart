@@ -3,6 +3,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:stash/data/repo.dart';
 import 'package:stash/models.dart';
 import 'package:stash/services/api.dart';
+import 'package:stash/services/auth.dart';
+import 'package:stash/services/reminders.dart';
 import 'package:stash/services/device_meta.dart';
 import 'package:stash/services/link_parser.dart';
 import 'package:stash/services/pending_queue.dart';
@@ -258,6 +260,56 @@ void main() {
     expect(await repo.folder(food.id), isNull);
     expect(await repo.posts(folderId: recipes.id), hasLength(1));
     expect(await repo.authorRule(Platform2.instagram, 'chef.anna'), isNull);
+  });
+
+  test('sign-in: the demo account always works; local accounts keep a hashed password', () async {
+    final auth = Auth(repo);
+    await auth.load();
+    expect(auth.signedIn, isFalse);
+
+    await auth.signInWithDemo();
+    expect(auth.user?.isDemo, isTrue);
+    await expectLater(auth.changePassword(current: Auth.demoPassword, next: 'another1'), throwsA(isA<AuthError>()));
+    await auth.signOut();
+    await expectLater(auth.signIn(Auth.demoEmail, 'wrong'), throwsA(isA<AuthError>()));
+
+    await auth.signUp(name: 'Nermin', email: 'Me@Example.com ', password: 'secret1');
+    expect(auth.user?.email, 'me@example.com');
+    expect(await repo.kv('auth_accounts'), isNot(contains('secret1')));
+    await expectLater(auth.signUp(name: 'X', email: 'me@example.com', password: 'secret2'), throwsA(isA<AuthError>()));
+
+    // The session survives a restart.
+    final again = Auth(repo);
+    await again.load();
+    expect(again.user?.name, 'Nermin');
+
+    await again.updateName('Nermin K');
+    await again.changePassword(current: 'secret1', next: 'secret9');
+    await again.signOut();
+    await expectLater(again.signIn('me@example.com', 'secret1'), throwsA(isA<AuthError>()));
+    await again.signIn('me@example.com', 'secret9');
+    expect(again.user?.name, 'Nermin K');
+
+    await again.deleteAccount();
+    expect(again.signedIn, isFalse);
+    await expectLater(again.signIn('me@example.com', 'secret9'), throwsA(isA<AuthError>()));
+
+    expect(Auth.validateEmail('nope'), isNotNull);
+    expect(Auth.validateEmail('a@b.co'), isNull);
+    expect(Auth.validatePassword('12345'), isNotNull);
+  });
+
+  test('reminder choices are all in the future and read naturally', () {
+    final monday = DateTime(2026, 11, 9, 10); // a Monday morning
+    final choices = reminderChoices(monday);
+    expect(choices.map((c) => c.$1), ['In an hour', 'Tonight, 8 pm', 'Tomorrow, 9 am', 'Saturday, 10 am', 'In a week']);
+    expect(choices.every((c) => c.$2.isAfter(monday)), isTrue);
+    expect(choices[3].$2, DateTime(2026, 11, 14, 10));
+
+    final saturdayNight = DateTime(2026, 11, 14, 21);
+    final late = reminderChoices(saturdayNight);
+    expect(late.map((c) => c.$1), isNot(contains('Tonight, 8 pm')));
+    expect(late.firstWhere((c) => c.$1.contains('Saturday')).$2, DateTime(2026, 11, 21, 10));
   });
 
   test('AI suggestion is pre-selected and saved in one step', () async {
