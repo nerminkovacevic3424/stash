@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/store.dart';
 import '../models.dart';
@@ -219,3 +220,33 @@ Future<Folder?> pickFolder(BuildContext context, Store store, {String? currentId
     ),
   ),
 );
+
+/// Sends a folder as a message: its name, then each post's description and
+/// link. Pasting or sharing that message into Stash recreates the folder on
+/// the other person's phone. It is a copy, not a live shared folder.
+Future<void> sendFolder(BuildContext context, Store store, Folder folder) async {
+  final posts = await store.repo.posts(folderId: folder.id);
+  if (!context.mounted) return;
+  if (posts.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This folder is empty')));
+    return;
+  }
+  final text = StringBuffer('📁 ${folder.name} — shared from Stash\n');
+  for (final p in posts) {
+    final about = (p.aiDescription ?? p.caption)?.replaceAll(RegExp(r'\s+'), ' ').trim();
+    text.write('\n');
+    if (about != null && about.isNotEmpty) text.writeln(about.length > 120 ? '${about.substring(0, 117)}…' : about);
+    text.writeln(p.url);
+  }
+  try {
+    await const MethodChannel('stash/open')
+        .invokeMethod<void>('shareText', {'text': text.toString(), 'title': 'Send "${folder.name}"'});
+  } catch (_) {
+    // No share menu on this platform: put it on the clipboard instead.
+    await Clipboard.setData(ClipboardData(text: text.toString()));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Folder copied. Paste it into a message.')));
+    }
+  }
+}

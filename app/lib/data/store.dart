@@ -11,9 +11,9 @@ import 'repo.dart';
 
 /// App-wide state for the main app. Screens listen to it and re-query on change.
 class Store extends ChangeNotifier {
-  Store(this.repo, {String? backendUrl}) : api = Api(baseUrl: backendUrl) {
-    suggester = Suggester(repo, api);
-    queue = PendingQueue(repo, api, suggester);
+  Store(this.repo, {String? backendUrl, Api? api}) : api = api ?? Api(baseUrl: backendUrl) {
+    suggester = Suggester(repo, this.api);
+    queue = PendingQueue(repo, this.api, suggester);
     sync = SyncService(repo);
   }
 
@@ -32,6 +32,10 @@ class Store extends ChangeNotifier {
   List<Platform2> platforms = const [];
   int total = 0;
   int favorites = 0;
+  int unwatched = 0;
+
+  /// Most used AI tags with their post counts.
+  List<MapEntry<String, int>> tags = const [];
 
   Folder? folderById(String id) {
     for (final f in folders) {
@@ -46,9 +50,11 @@ class Store extends ChangeNotifier {
     folders = await repo.folders();
     recent = await repo.posts(limit: 12);
     platforms = await repo.platforms();
-    final (all, fav) = await repo.counts();
+    final (all, fav, todo) = await repo.counts();
     total = all;
     favorites = fav;
+    unwatched = todo;
+    tags = await repo.topTags();
     notifyListeners();
   }
 

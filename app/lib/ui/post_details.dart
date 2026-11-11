@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/store.dart';
 import '../models.dart';
 import '../services/link_parser.dart';
+import '../services/reminders.dart';
+import 'folder_screen.dart';
 import 'post_card.dart';
 import 'widgets.dart';
 
@@ -35,6 +38,7 @@ class _PostDetails extends StatelessWidget {
     final muted = scheme.onSurfaceVariant;
     final folder = store.folderById(post.folderId);
     final caption = post.caption?.trim();
+    final reminder = post.remindAt != null && post.remindAt!.isAfter(DateTime.now());
 
     Widget label(String text, {IconData? icon}) => Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -136,6 +140,76 @@ class _PostDetails extends StatelessWidget {
               label('AI summary', icon: Icons.auto_awesome_rounded),
               Text(post.aiDescription!, style: theme.textTheme.titleMedium?.copyWith(height: 1.35)),
             ],
+            if (post.tags.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final tag in post.tags)
+                    ActionChip(
+                      label: Text('#$tag'),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        final nav = Navigator.of(context);
+                        nav.pop();
+                        nav.push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => FolderScreen(store: store, tag: tag),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ],
+            if (post.points.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              label('Key points', icon: Icons.checklist_rounded),
+              for (final point in post.points)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8, right: 10),
+                        child: Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
+                        ),
+                      ),
+                      Expanded(child: Text(point, style: theme.textTheme.bodyMedium?.copyWith(height: 1.35))),
+                    ],
+                  ),
+                ),
+            ],
+            if (post.place != null) ...[
+              const SizedBox(height: 12),
+              Material(
+                color: scheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(16),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => launchUrl(
+                    Uri.https('www.google.com', '/maps/search/', {'api': '1', 'query': post.place!}),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Icon(Icons.place_outlined, size: 20, color: scheme.primary),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(post.place!, style: theme.textTheme.bodyMedium)),
+                        Text('Map', style: theme.textTheme.labelLarge?.copyWith(color: scheme.primary)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (caption != null && caption.isNotEmpty) ...[
               const SizedBox(height: 18),
               label('Caption'),
@@ -182,6 +256,22 @@ class _PostDetails extends StatelessWidget {
                   color: post.favorite ? const Color(0xFFE5484D) : null,
                   onTap: () => onAction(PostAction.favorite),
                 ),
+                _Action(
+                  icon: post.watched ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded,
+                  label: post.watched ? 'Watched' : 'Mark watched',
+                  color: post.watched ? scheme.primary : null,
+                  onTap: () => onAction(PostAction.watched),
+                ),
+                _Action(
+                  icon: reminder ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                  label: reminder ? reminderLabel(post.remindAt!) : 'Remind me',
+                  color: reminder ? scheme.primary : null,
+                  onTap: () => onAction(PostAction.remind),
+                ),
+              ],
+            ),
+            Row(
+              children: [
                 _Action(icon: Icons.drive_file_move_outline, label: 'Move', onTap: () => onAction(PostAction.move)),
                 _Action(icon: Icons.link_rounded, label: 'Copy link', onTap: () => onAction(PostAction.copy)),
                 _Action(

@@ -20,6 +20,10 @@ supabase/   schema for optional multi-device sync
 - **Platforms**: Instagram, TikTok, YouTube, Facebook and X are recognised by name; a link to any other site is saved too, labelled with the site. Previews are best on Instagram, TikTok, YouTube and sites with link-preview tags. Facebook and X give a preview fetcher almost nothing, so those posts rely on the text shared alongside the link.
 - **Opening a post**: on Android the link is handed to the platform's own app by package name, because a plain "view" request often lands in the browser. If the app is not installed, the browser opens.
 - **In the app**: favorites, an All posts view, and "Add a link" for pasting a link without the share sheet.
+- **Coming back to saves**: reminders (local notifications; set from the share sheet or a post's details), a watched flag that is set when a post is opened from Stash, a "To watch" view, and an Android home screen widget showing one unwatched post.
+- **More from the AI**: tags on every post, key points and a place pulled from long captions, search by meaning, and "Tidy up" (suggested folder merges and homes for Unsorted posts). Nothing in Tidy up changes until it is applied.
+- **Bulk and sharing**: long-press a post in a folder to select several and move, mark or delete them. "Send folder to someone" shares a folder as text; sharing or pasting that text into Stash imports it as a folder. This is a copy, not a live shared folder, which would need accounts and a database.
+- **First launch**: a three-screen walkthrough, shown once to people with an empty library.
 - **AI description**: the AI writes a one-sentence description of each post from its caption and cover image. Cards show it (marked with a sparkle) in place of the raw caption, and search covers it.
 - **Sorting by content**: when no existing folder matches a post's topic, the AI proposes a new folder and it is created on save. Posts saved before the AI could answer are sorted the next time the app is open and online, including into new folders.
 - **Offline**: saving only needs the URL. Posts saved without a preview, or filed by fallback, are finished by a queue the next time the main app is open and online.
@@ -38,7 +42,10 @@ npm start                # listens on :8787
 |---|---|
 | `POST /v1/metadata` `{url}` | resolve short links, then TikTok oEmbed / Meta oEmbed, falling back to Open Graph tags |
 | `POST /v1/resolve` `{url}` | redirect resolution only (hosts are allow-listed) |
-| `POST /v1/suggest` | AI description of the post, plus a folder (existing or new) |
+| `POST /v1/suggest` | AI description and tags for the post, plus a folder (existing or new) |
+| `POST /v1/extract` | key points and a place from a caption |
+| `POST /v1/search` | posts matching a query by meaning |
+| `POST /v1/tidy` | suggested folder merges and moves out of Unsorted |
 
 ### Putting it online
 

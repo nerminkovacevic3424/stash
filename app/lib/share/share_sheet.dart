@@ -7,6 +7,7 @@ import '../data/repo.dart';
 import '../models.dart';
 import '../services/api.dart';
 import '../services/link_parser.dart';
+import '../services/reminders.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'share_controller.dart';
@@ -52,6 +53,7 @@ class _ShareSheetState extends State<ShareSheet> {
   bool _noteOpen = false;
   bool _creating = false;
   bool _closing = false;
+  bool _reminderSet = false;
 
   @override
   void initState() {
@@ -79,6 +81,18 @@ class _ShareSheetState extends State<ShareSheet> {
     setState(() {});
     if (c.stage == ShareStage.saved && !_closing) {
       HapticFeedback.mediumImpact();
+      final id = c.savedPostId;
+      if (id != null && c.remindAt != null && !_reminderSet) {
+        _reminderSet = true;
+        unawaited(
+          Reminders.schedule(
+            id,
+            c.remindAt!,
+            title: 'Saved for later${c.author != null ? ': @${c.author}' : ''}',
+            body: c.aiDescription ?? c.meta?.caption,
+          ),
+        );
+      }
       Timer(const Duration(milliseconds: 950), _close);
     }
   }
@@ -216,7 +230,10 @@ class _ShareSheetState extends State<ShareSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         handle,
-        _Preview(link: link, meta: c.meta, loading: c.metaLoading, aiDescription: c.aiDescription),
+        if (c.isBulk)
+          _BulkPreview(count: c.bulk.length)
+        else
+          _Preview(link: link, meta: c.meta, loading: c.metaLoading, aiDescription: c.aiDescription),
         if (c.duplicate != null) ...[
           const SizedBox(height: 14),
           _DuplicateBanner(folderName: c.duplicateFolder?.name ?? 'your library'),
@@ -225,9 +242,9 @@ class _ShareSheetState extends State<ShareSheet> {
         _FolderChip(controller: c, open: _pickerOpen, onTap: () => setState(() => _pickerOpen = !_pickerOpen)),
         if (_pickerOpen) ...[const SizedBox(height: 12), _picker(theme)],
         const SizedBox(height: 6),
-        if (_noteOpen)
+        if (_noteOpen && !c.isBulk)
           Padding(
-            padding: const EdgeInsets.only(top: 6, bottom: 8),
+            padding: const EdgeInsets.only(top: 6, bottom: 4),
             child: TextField(
               controller: _note,
               autofocus: true,
@@ -236,19 +253,24 @@ class _ShareSheetState extends State<ShareSheet> {
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(hintText: 'Why are you saving this?'),
             ),
-          )
-        else
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => setState(() => _noteOpen = true),
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Add note'),
-              style: TextButton.styleFrom(
-                foregroundColor: theme.colorScheme.onSurfaceVariant,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-            ),
+          ),
+        if (!c.isBulk)
+          Row(
+            children: [
+              if (!_noteOpen) ...[
+                TextButton.icon(
+                  onPressed: () => setState(() => _noteOpen = true),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Add note'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurfaceVariant,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ],
+              _remindButton(theme),
+            ],
           ),
         const SizedBox(height: 6),
         FilledButton(
@@ -261,7 +283,25 @@ class _ShareSheetState extends State<ShareSheet> {
     );
   }
 
+  Widget _remindButton(ThemeData theme) {
+    final when = c.remindAt;
+    return TextButton.icon(
+      onPressed: () async {
+        final picked = await pickReminder(context, current: when);
+        if (picked == null) return;
+        setState(() => c.remindAt = picked == clearReminder ? null : picked);
+      },
+      icon: Icon(when == null ? Icons.notifications_none_rounded : Icons.notifications_active_rounded, size: 18),
+      label: Text(when == null ? 'Remind me' : reminderLabel(when)),
+      style: TextButton.styleFrom(
+        foregroundColor: when == null ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
+    );
+  }
+
   String _saveLabel() {
+    if (c.isBulk) return 'Save ${c.bulk.length} links';
     if (c.duplicate == null) return 'Save';
     return c.duplicateInPlace ? 'Keep in ${c.choiceName}' : 'Move to ${c.choiceName}';
   }
@@ -395,6 +435,41 @@ class _Preview extends StatelessWidget {
   }
 }
 
+class _BulkPreview extends StatelessWidget {
+  const _BulkPreview({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(16)),
+          child: Icon(Icons.collections_bookmark_outlined, color: scheme.onPrimaryContainer, size: 28),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$count links', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 5),
+              Text(
+                'Saved together. Previews and descriptions fill in when you open Stash.',
+                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, height: 1.3),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _DuplicateBanner extends StatelessWidget {
   const _DuplicateBanner({required this.folderName});
   final String folderName;
@@ -430,6 +505,7 @@ class _FolderChip extends StatelessWidget {
 
   String _label() {
     final c = controller;
+    if (c.isBulk) return c.newName != null ? 'Into a new folder' : 'Into';
     if (c.duplicate != null && !c.userPicked) return 'Saved in';
     if (c.userPicked) return c.newName != null ? 'New folder' : 'Save to';
     if (c.newName != null) return 'Suggested new folder';

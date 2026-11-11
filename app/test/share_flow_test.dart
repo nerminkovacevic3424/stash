@@ -18,6 +18,15 @@ class FakeApi extends Api {
   FolderSuggestion? Function(List<Folder> folders)? answer;
 
   @override
+  Future<bool> ping() async => online;
+
+  @override
+  Future<(List<String>, String?)> extract({required Platform2 platform, required String caption}) async {
+    if (!online) throw Unreachable();
+    return (const ['200 g pasta', '2 cloves garlic'], null);
+  }
+
+  @override
   Future<PostMeta?> metadata(String url, {Duration timeout = const Duration(seconds: 8)}) async {
     await Future<void>.delayed(delay);
     if (!online) throw Unreachable();
@@ -26,7 +35,7 @@ class FakeApi extends Api {
       url: url,
       resolved: true,
       author: author,
-      caption: 'Creamy garlic #pasta in 15 minutes #dinner',
+      caption: 'Creamy garlic #pasta in 15 minutes #dinner. You need 200 g pasta, 2 cloves garlic and cream.',
       thumbnailUrl: 'https://example.com/t.jpg',
       ok: true,
     );
@@ -46,7 +55,11 @@ class FakeApi extends Api {
   }) async {
     if (!online) throw Unreachable();
     suggestCalls++;
-    return AiAnswer(suggestion: answer?.call(folders), description: 'A quick creamy garlic pasta recipe');
+    return AiAnswer(
+      suggestion: answer?.call(folders),
+      description: 'A quick creamy garlic pasta recipe',
+      tags: const ['pasta', 'quick dinner'],
+    );
   }
 }
 
@@ -182,8 +195,69 @@ void main() {
 
     await repo.setFavorite(yt.id, true);
     expect((await repo.posts(favorite: true)).single.id, yt.id);
-    expect(await repo.counts(), (2, 1));
+    expect(await repo.counts(), (2, 1, 2));
     expect(await repo.platforms(favorite: true), [Platform2.youtube]);
+  });
+
+  test('tags, key points, watched and bulk changes', () async {
+    final recipes = await repo.createFolder('Recipes');
+    api.answer = (_) => FolderSuggestion.existing(recipes.id, SuggestionSource.ai);
+    await (await share(reel1)).save('');
+    await (await share('https://www.tiktok.com/@other/video/42')).save('');
+
+    var post = (await repo.posts(tag: 'pasta')).first;
+    expect(post.tags, ['pasta', 'quick dinner']);
+    expect(await repo.posts(tag: 'past'), isEmpty); // whole tags only
+    expect((await repo.topTags()).first.key, anyOf('pasta', 'quick dinner'));
+    expect(await repo.posts(query: 'quick dinner'), isNotEmpty);
+
+    // The queue mines the caption for the practical part.
+    await PendingQueue(repo, api, Suggester(repo, api)).process();
+    post = (await repo.post(post.id))!;
+    expect(post.points, ['200 g pasta', '2 cloves garlic']);
+    expect(await repo.pendingExtract(), isEmpty);
+
+    expect(await repo.counts(), (2, 0, 2));
+    final ids = [for (final p in await repo.posts()) p.id];
+    await repo.setWatched(ids, true);
+    expect(await repo.posts(watched: false), isEmpty);
+    await repo.setFavorites(ids, true);
+    expect(await repo.counts(), (2, 2, 0));
+    await repo.deletePosts(ids);
+    expect(await repo.posts(), isEmpty);
+  });
+
+  test('a folder sent as text is imported as one folder', () async {
+    final c = await share(
+      '📁 Trip ideas — shared from Stash\n\nHidden beaches\nhttps://www.instagram.com/reel/AAA111/\n\n'
+      'https://youtu.be/dQw4w9WgXcQ\nhttps://vimeo.com/76979871\nhttps://youtu.be/dQw4w9WgXcQ',
+    );
+    expect(c.isBulk, isTrue);
+    expect(c.bulk, hasLength(3)); // the repeated link counts once
+    expect(c.newName, 'Trip ideas');
+    await c.save('');
+    expect(c.confirmation, 'Saved 3 to Trip ideas');
+    final folder = (await repo.folders()).firstWhere((f) => f.name == 'Trip ideas');
+    expect(await repo.posts(folderId: folder.id), hasLength(3));
+
+    // Sharing it again adds nothing and reuses the folder.
+    final again = await share(
+      '📁 Trip ideas — shared from Stash\nhttps://youtu.be/dQw4w9WgXcQ\nhttps://vimeo.com/76979871',
+    );
+    expect(again.selected?.id, folder.id);
+    await again.save('');
+    expect(again.confirmation, 'Already saved');
+  });
+
+  test('merging folders moves the posts and removes the source', () async {
+    final food = await repo.createFolder('Food');
+    final recipes = await repo.createFolder('Recipes');
+    api.answer = (_) => FolderSuggestion.existing(food.id, SuggestionSource.ai);
+    await (await share(reel1)).save('');
+    await repo.mergeFolders(food.id, recipes.id);
+    expect(await repo.folder(food.id), isNull);
+    expect(await repo.posts(folderId: recipes.id), hasLength(1));
+    expect(await repo.authorRule(Platform2.instagram, 'chef.anna'), isNull);
   });
 
   test('AI suggestion is pre-selected and saved in one step', () async {

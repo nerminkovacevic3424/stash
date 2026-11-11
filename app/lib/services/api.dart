@@ -118,6 +118,36 @@ class Api {
         suggestion = FolderSuggestion.create(s['name'] as String, (s['emoji'] as String?) ?? '📁');
       }
     }
-    return AiAnswer(suggestion: suggestion, description: description);
+    final tags = [
+      for (final t in (j['tags'] as List?) ?? const [])
+        if (t is String && t.trim().isNotEmpty) t.trim().toLowerCase().replaceAll(',', ' '),
+    ];
+    return AiAnswer(suggestion: suggestion, description: description, tags: tags);
+  }
+
+  /// The practical content of a caption (ingredients, steps, tips) and the
+  /// place it is about, if any.
+  Future<(List<String>, String?)> extract({required Platform2 platform, required String caption}) async {
+    final j = await _post('/v1/extract', {'platform': platform.name, 'caption': caption}, const Duration(seconds: 20));
+    final points = [
+      for (final p in (j?['points'] as List?) ?? const [])
+        if (p is String && p.trim().isNotEmpty) p.trim(),
+    ];
+    final place = j?['place'];
+    return (points, place is String && place.trim().isNotEmpty ? place.trim() : null);
+  }
+
+  /// Ids of the posts that match [query] by meaning, best first. Null when
+  /// the AI could not be asked.
+  Future<List<String>?> search(String query, List<Map<String, String>> posts) async {
+    final j = await _post('/v1/search', {'query': query, 'posts': posts}, const Duration(seconds: 25));
+    if (j == null || j['failed'] == true) return null;
+    return ((j['ids'] as List?) ?? const []).whereType<String>().toList();
+  }
+
+  /// Raw tidy-up suggestions: folder merges and moves out of Unsorted.
+  Future<Map<String, dynamic>?> tidy(Map<String, Object?> library) async {
+    final j = await _post('/v1/tidy', library, const Duration(seconds: 40));
+    return j == null || j['failed'] == true ? null : j;
   }
 }

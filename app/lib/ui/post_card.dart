@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/store.dart';
 import '../models.dart';
 import '../services/link_parser.dart';
+import '../services/reminders.dart';
 import 'folder_sheets.dart';
 import 'post_details.dart';
 import 'widgets.dart';
@@ -53,8 +55,10 @@ const _apps = <Platform2, List<String>>{
 /// A plain "view this link" request is not enough on Android: the system
 /// often answers it with the browser, which shows the post as a web page.
 /// So the link is handed to the app by name first.
-Future<void> openPost(BuildContext context, Post post) async {
+Future<void> openPost(BuildContext context, Store store, Post post) async {
   final uri = Uri.parse(post.url);
+  // Opening it from here counts as having watched it.
+  if (!post.watched) unawaited(store.mutate(() => store.repo.setWatched([post.id], true)));
   var ok = false;
   final apps = _apps[post.platform];
   if (Platform.isAndroid && apps != null) {
@@ -78,12 +82,12 @@ Future<void> openPost(BuildContext context, Post post) async {
   }
 }
 
-enum PostAction { open, favorite, move, note, copy, delete }
+enum PostAction { open, favorite, watched, remind, move, note, copy, delete }
 
 Future<void> runPostAction(BuildContext context, Store store, Post post, PostAction action) async {
   switch (action) {
     case PostAction.open:
-      await openPost(context, post);
+      await openPost(context, store, post);
     case PostAction.move:
       final target = await pickFolder(context, store, currentId: post.folderId);
       if (target == null) return;
@@ -96,6 +100,32 @@ Future<void> runPostAction(BuildContext context, Store store, Post post, PostAct
       if (note != null) await store.mutate(() => store.repo.setNote(post.id, note));
     case PostAction.favorite:
       await store.mutate(() => store.repo.setFavorite(post.id, !post.favorite));
+    case PostAction.watched:
+      await store.mutate(() => store.repo.setWatched([post.id], !post.watched));
+    case PostAction.remind:
+      final when = await pickReminder(context, current: post.remindAt);
+      if (when == null) return;
+      if (when == clearReminder) {
+        await Reminders.cancel(post.id);
+        await store.mutate(() => store.repo.setReminder(post.id, null));
+        return;
+      }
+      final ok = await Reminders.schedule(
+        post.id,
+        when,
+        title: 'Saved for later: ${postTitle(post)}',
+        body: post.aiDescription ?? post.caption,
+      );
+      if (ok) await store.mutate(() => store.repo.setReminder(post.id, when));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              ok ? 'Reminder set for ${reminderLabel(when)}' : 'Allow notifications for Stash to get reminders',
+            ),
+          ),
+        );
+      }
     case PostAction.copy:
       await Clipboard.setData(ClipboardData(text: post.url));
     case PostAction.delete:
@@ -157,24 +187,33 @@ class _PostMenu extends StatelessWidget {
 
 /// Visual card for folder grids: tall thumbnail with the author over it, the
 /// description (tap "Show more" for the full text) and date underneath.
+///
+/// When [onSelect] is given, a long press starts selecting instead of opening
+/// the details; while [selected] is non-null the grid is in selection mode
+/// and a tap toggles this tile.
 class PostTile extends StatelessWidget {
-  const PostTile({super.key, required this.store, required this.post});
+  const PostTile({super.key, required this.store, required this.post, this.selected, this.onSelect});
   final Store store;
   final Post post;
+  final bool? selected;
+  final VoidCallback? onSelect;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurfaceVariant;
     final caption = _summary(post);
+    final selecting = selected != null;
 
     return Semantics(
       button: true,
+      selected: selected,
       label: '${postTitle(post)}. ${caption ?? ''}',
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => openPost(context, post),
-        onLongPress: () => showPostDetails(context, store, post),
+        onTap: selecting ? onSelect : () => openPost(context, store, post),
+        onLongPress: onSelect ?? () => showPostDetails(context, store, post),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -203,20 +242,37 @@ class PostTile extends StatelessWidget {
                       ),
                     ),
                     Positioned(left: 10, top: 10, child: PlatformBadge(post.platform, size: 26)),
-                    Positioned(
-                      right: 6,
-                      top: 6,
-                      child: _PostMenu(
-                        store: store,
-                        post: post,
+                    if (selecting) ...[
+                      if (selected!) Positioned.fill(child: ColoredBox(color: scheme.primary.withValues(alpha: 0.28))),
+                      Positioned(
+                        right: 8,
+                        top: 8,
                         child: Container(
-                          width: 34,
-                          height: 34,
-                          decoration: const BoxDecoration(color: Color(0x59000000), shape: BoxShape.circle),
-                          child: const Icon(Icons.more_horiz_rounded, color: Colors.white, size: 20),
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: selected! ? scheme.primary : const Color(0x59000000),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: selected! ? Icon(Icons.check_rounded, size: 18, color: scheme.onPrimary) : null,
                         ),
                       ),
-                    ),
+                    ] else
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: _PostMenu(
+                          store: store,
+                          post: post,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: const BoxDecoration(color: Color(0x59000000), shape: BoxShape.circle),
+                            child: const Icon(Icons.more_horiz_rounded, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      ),
                     Positioned(
                       left: 12,
                       right: 12,
@@ -240,7 +296,7 @@ class PostTile extends StatelessWidget {
                 style: theme.textTheme.bodySmall?.copyWith(
                   height: 1.3,
                   fontSize: 13,
-                  color: caption == null ? muted : theme.colorScheme.onSurface,
+                  color: caption == null ? muted : scheme.onSurface,
                 ),
               ),
             ),
@@ -249,9 +305,22 @@ class PostTile extends StatelessWidget {
               child: Row(
                 children: [
                   Text(formatDate(post.createdAt), style: theme.textTheme.labelSmall?.copyWith(color: muted)),
+                  if (post.watched) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.check_circle_rounded, size: 13, color: muted, semanticLabel: 'Watched'),
+                  ],
                   if (post.note != null) ...[
                     const SizedBox(width: 6),
                     Icon(Icons.sticky_note_2_outlined, size: 13, color: muted),
+                  ],
+                  if (post.remindAt != null && post.remindAt!.isAfter(DateTime.now())) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.notifications_active_outlined,
+                      size: 13,
+                      color: scheme.primary,
+                      semanticLabel: 'Reminder set',
+                    ),
                   ],
                   if (post.favorite) ...[
                     const SizedBox(width: 6),
@@ -284,7 +353,7 @@ class PostCard extends StatelessWidget {
     final caption = _summary(post);
 
     return InkWell(
-      onTap: () => openPost(context, post),
+      onTap: () => openPost(context, store, post),
       onLongPress: () => showPostDetails(context, store, post),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 10, 8, 10),

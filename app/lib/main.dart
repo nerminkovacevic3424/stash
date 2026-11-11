@@ -6,10 +6,15 @@ import 'package:flutter/material.dart';
 import 'data/repo.dart';
 import 'data/store.dart';
 import 'services/api.dart';
+import 'services/reminders.dart';
 import 'services/sync.dart';
 import 'share/share_sheet.dart';
 import 'ui/home_screen.dart';
+import 'ui/onboarding_screen.dart';
+import 'ui/post_details.dart';
 import 'ui/theme.dart';
+
+const _onboardedKey = 'onboarded';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +22,9 @@ Future<void> main() async {
   await SyncService.init();
   final store = Store(repo, backendUrl: await repo.kv(backendUrlKey));
   await store.reload();
-  runApp(StashApp(store: store));
+  // People who already have saves do not need the tour.
+  final onboarded = await repo.kv(_onboardedKey) != null || store.total > 0;
+  runApp(StashApp(store: store, showOnboarding: !onboarded));
 }
 
 /// Entrypoint for the Android share activity (see ShareActivity.kt).
@@ -35,24 +42,52 @@ Future<void> shareMain() async {
 }
 
 class StashApp extends StatefulWidget {
-  const StashApp({super.key, required this.store});
+  const StashApp({super.key, required this.store, this.showOnboarding = false});
   final Store store;
+  final bool showOnboarding;
 
   @override
   State<StashApp> createState() => _StashAppState();
 }
 
 class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
+  final _navigator = GlobalKey<NavigatorState>();
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
+  late bool _onboarding = widget.showOnboarding;
+
+  Store get store => widget.store;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    unawaited(widget.store.background());
+    _wakeAndWork();
     _connectivity = Connectivity().onConnectivityChanged.listen((results) {
-      if (results.any((r) => r != ConnectivityResult.none)) unawaited(widget.store.background());
+      if (results.any((r) => r != ConnectivityResult.none)) unawaited(store.background());
     });
+
+    // Tapping a reminder opens that post's details.
+    Reminders.onOpen = _showPost;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final id = await Reminders.launchPostId();
+      if (id != null) _showPost(id);
+    });
+  }
+
+  /// Wakes the server (free hosting sleeps when idle) so it is ready by the
+  /// time something is shared, then finishes any queued work.
+  void _wakeAndWork() {
+    unawaited(store.api.ping());
+    unawaited(store.background());
+  }
+
+  Future<void> _showPost(String id) async {
+    final post = await store.repo.post(id);
+    final context = _navigator.currentContext;
+    if (post == null || context == null || !context.mounted) return;
+    // The reminder has done its job.
+    await store.repo.setReminder(id, null);
+    if (context.mounted) await showPostDetails(context, store, post);
   }
 
   @override
@@ -60,7 +95,7 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
     // The share sheet writes from another process while we are in the
     // background, so re-read on every return and finish any queued work.
     if (state == AppLifecycleState.resumed) {
-      unawaited(widget.store.reload().then((_) => widget.store.background()));
+      unawaited(store.reload().then((_) => _wakeAndWork()));
     }
   }
 
@@ -75,8 +110,16 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Stash',
     debugShowCheckedModeBanner: false,
+    navigatorKey: _navigator,
     theme: buildTheme(Brightness.light),
     darkTheme: buildTheme(Brightness.dark),
-    home: HomeScreen(store: widget.store),
+    home: _onboarding
+        ? OnboardingScreen(
+            onDone: () {
+              unawaited(store.repo.setKv(_onboardedKey, '1'));
+              setState(() => _onboarding = false);
+            },
+          )
+        : HomeScreen(store: store),
   );
 }

@@ -16,6 +16,7 @@ import 'post_card.dart';
 import 'reorder_screen.dart';
 import 'search_screen.dart';
 import 'theme.dart';
+import 'tidy_screen.dart';
 import 'widgets.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -124,11 +125,13 @@ class HomeScreen extends StatelessWidget {
                           PopupMenuButton<String>(
                             tooltip: 'More',
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            onSelected: (v) => _push(
-                              context,
-                              v == 'reorder' ? ReorderScreen(store: store) : AccountScreen(store: store),
-                            ),
+                            onSelected: (v) => _push(context, switch (v) {
+                              'reorder' => ReorderScreen(store: store),
+                              'tidy' => TidyScreen(store: store),
+                              _ => AccountScreen(store: store),
+                            }),
                             itemBuilder: (_) => const [
+                              PopupMenuItem(value: 'tidy', child: Text('Tidy up with AI')),
                               PopupMenuItem(value: 'reorder', child: Text('Reorder folders')),
                               PopupMenuItem(value: 'account', child: Text('Settings')),
                             ],
@@ -161,6 +164,16 @@ class HomeScreen extends StatelessWidget {
                             const SizedBox(width: 10),
                             Expanded(
                               child: _QuickTile(
+                                icon: Icons.visibility_outlined,
+                                iconColor: const Color(0xFFF76B15),
+                                label: 'To watch',
+                                count: store.unwatched,
+                                onTap: () => _push(context, FolderScreen(store: store, unwatchedOnly: true)),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _QuickTile(
                                 icon: Icons.favorite_rounded,
                                 iconColor: const Color(0xFFE5484D),
                                 label: 'Favorites',
@@ -169,6 +182,26 @@ class HomeScreen extends StatelessWidget {
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+                  if (!empty && store.tags.length >= 3)
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 52,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                          itemCount: store.tags.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
+                            final tag = store.tags[i];
+                            return ActionChip(
+                              label: Text('#${tag.key}  ${tag.value}'),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _push(context, FolderScreen(store: store, tag: tag.key)),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -250,9 +283,8 @@ Future<void> addLinkFlow(BuildContext context, Store store) async {
         keyboardType: TextInputType.url,
         autocorrect: false,
         minLines: 1,
-        maxLines: 3,
-        onSubmitted: (v) => Navigator.pop(context, v),
-        decoration: const InputDecoration(hintText: 'Paste a video or post link'),
+        maxLines: 4,
+        decoration: const InputDecoration(hintText: 'Paste a link, or a folder someone sent you'),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
@@ -303,15 +335,24 @@ class _QuickTile extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 20, color: iconColor ?? scheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(label, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                Row(
+                  children: [
+                    Icon(icon, size: 20, color: iconColor ?? scheme.primary),
+                    const Spacer(),
+                    Text('$count', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                  ],
                 ),
-                Text('$count', style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
+                ),
               ],
             ),
           ),
@@ -343,7 +384,10 @@ class _SearchPill extends StatelessWidget {
               children: [
                 Icon(Icons.search_rounded, size: 22, color: scheme.onSurfaceVariant),
                 const SizedBox(width: 12),
-                Text('Search captions, authors, notes', style: TextStyle(fontSize: 15, color: scheme.onSurfaceVariant)),
+                Text(
+                  'Search, or describe what you want',
+                  style: TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
+                ),
               ],
             ),
           ),
@@ -388,7 +432,7 @@ class _RecentTile extends StatelessWidget {
     button: true,
     label: postTitle(post),
     child: GestureDetector(
-      onTap: () => openPost(context, post),
+      onTap: () => openPost(context, store, post),
       onLongPress: () => showPostDetails(context, store, post),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),

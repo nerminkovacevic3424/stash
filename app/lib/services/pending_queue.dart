@@ -5,7 +5,8 @@ import 'suggester.dart';
 /// Finishes work the share sheet could not do in its 1.5 seconds:
 ///
 ///  * posts saved offline (or before the preview loaded) get their metadata;
-///  * every post gets an AI description;
+///  * every post gets an AI description and tags, and long captions are
+///    mined for their practical content (ingredients, steps, a place);
 ///  * posts that were filed into a fallback folder are sorted by content,
 ///    into an existing folder or a new one the AI proposes.
 ///
@@ -40,8 +41,8 @@ class PendingQueue {
           caption: post.caption,
           thumbnailUrl: post.thumbnailUrl,
         );
-        await repo.setAi(post.id, answer.description);
-        if (answer.description != null) changed = true;
+        await repo.setAi(post.id, answer.description, tags: answer.tags);
+        if (answer.description != null || answer.tags.isNotEmpty) changed = true;
 
         if (post.needsSuggestion) {
           // What the user taught us wins over the AI's opinion.
@@ -62,6 +63,13 @@ class PendingQueue {
           }
           await repo.clearNeedsSuggestion(post.id);
         }
+      }
+
+      // Last and least urgent: mine long captions for the useful part.
+      for (final post in await repo.pendingExtract()) {
+        final (points, place) = await api.extract(platform: post.platform, caption: post.caption!);
+        await repo.setExtract(post.id, points, place);
+        if (points.isNotEmpty || place != null) changed = true;
       }
     } on Unreachable {
       // Still offline; try again next time.

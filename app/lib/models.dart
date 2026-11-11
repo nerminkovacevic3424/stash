@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 const unsortedId = 'unsorted';
 
 enum Platform2 {
@@ -67,6 +69,11 @@ class Post {
     this.note,
     this.aiDescription,
     this.favorite = false,
+    this.watched = false,
+    this.tags = const [],
+    this.points = const [],
+    this.place,
+    this.remindAt,
     this.metaStatus = 0,
     this.needsSuggestion = false,
   });
@@ -91,6 +98,20 @@ class Post {
   final String? aiDescription;
   final bool favorite;
 
+  /// Opened from Stash at least once (or marked by hand).
+  final bool watched;
+
+  /// Topic tags chosen by the AI, lowercase.
+  final List<String> tags;
+
+  /// The practical content the AI pulled out of the caption: ingredients,
+  /// steps, exercises, tips.
+  final List<String> points;
+
+  /// A specific place the post is about, when there is one.
+  final String? place;
+  final DateTime? remindAt;
+
   /// 0 = metadata still to fetch, 1 = fetched, 2 = gave up.
   final int metaStatus;
   final bool needsSuggestion;
@@ -109,6 +130,11 @@ class Post {
     note: r['note'] as String?,
     aiDescription: r['ai_description'] as String?,
     favorite: r['favorite'] == 1,
+    watched: r['watched'] == 1,
+    tags: decodeTags(r['tags'] as String?),
+    points: decodePoints(r['ai_points'] as String?),
+    place: r['ai_place'] as String?,
+    remindAt: r['remind_at'] == null ? null : DateTime.fromMillisecondsSinceEpoch(r['remind_at'] as int),
     metaStatus: r['meta_status'] as int,
     needsSuggestion: r['needs_suggestion'] == 1,
   );
@@ -178,9 +204,39 @@ class FolderSuggestion {
 
 /// What the backend's AI returned for one post.
 class AiAnswer {
-  const AiAnswer({this.suggestion, this.description});
+  const AiAnswer({this.suggestion, this.description, this.tags = const []});
   static const empty = AiAnswer();
 
   final FolderSuggestion? suggestion;
   final String? description;
+  final List<String> tags;
+}
+
+/// Tags are stored as ",a,b," so one LIKE '%,a,%' finds a whole tag.
+String? encodeTags(List<String> tags) => tags.isEmpty ? null : ',${tags.join(',')},';
+
+List<String> decodeTags(String? stored) =>
+    stored == null ? const [] : stored.split(',').where((t) => t.isNotEmpty).toList();
+
+List<String> decodePoints(String? stored) {
+  if (stored == null || stored.isEmpty) return const [];
+  try {
+    return (jsonDecode(stored) as List).cast<String>();
+  } catch (_) {
+    return const [];
+  }
+}
+
+/// One change the AI proposes when tidying the library.
+class FolderMerge {
+  const FolderMerge(this.from, this.into, this.reason);
+  final Folder from;
+  final Folder into;
+  final String reason;
+}
+
+class PostMove {
+  const PostMove(this.post, this.folder);
+  final Post post;
+  final Folder folder;
 }

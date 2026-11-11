@@ -21,6 +21,8 @@ import 'package:stash/ui/account_screen.dart';
 import 'package:stash/ui/folder_screen.dart';
 import 'package:stash/ui/folder_sheets.dart';
 import 'package:stash/ui/home_screen.dart';
+import 'package:stash/ui/onboarding_screen.dart';
+import 'package:stash/ui/tidy_screen.dart';
 import 'package:stash/ui/search_screen.dart';
 import 'package:stash/ui/theme.dart';
 import 'package:stash/ui/widgets.dart';
@@ -70,6 +72,26 @@ class _FakeApi extends Api {
 
   @override
   Future<bool> ping() async => true;
+
+  @override
+  Future<List<String>?> search(String query, List<Map<String, String>> posts) async => [
+    for (final p in posts)
+      if (p['text']!.contains('pasta') || p['text']!.contains('chicken')) p['id']!,
+  ];
+
+  @override
+  Future<Map<String, dynamic>?> tidy(Map<String, Object?> library) async {
+    final folders = library['folders']! as List;
+    String id(String name) => (folders.firstWhere((f) => (f as Map)['name'] == name) as Map)['id'] as String;
+    return {
+      'merges': [
+        {'fromId': id('Gift ideas'), 'intoId': id('Home ideas'), 'reason': 'Both collect things to buy for the home.'},
+      ],
+      'moves': [
+        for (final p in library['unsorted']! as List) {'postId': (p as Map)['id'], 'folderId': id('Recipes')},
+      ],
+    };
+  }
 
   @override
   Future<PostMeta?> metadata(String url, {Duration timeout = const Duration(seconds: 8)}) async => PostMeta(
@@ -134,6 +156,15 @@ const _posts = [
   ('Travel', 'other', null, 'A slow weekend in the Scottish Highlands', null),
 ];
 
+const _tags = [
+  ['pasta', 'quick dinner'],
+  ['chicken', 'one pan'],
+  ['beaches', 'albania'],
+  ['trains', 'switzerland'],
+  ['stretching', 'hips'],
+  ['cats'],
+];
+
 const _descriptions = [
   'A 15-minute creamy garlic butter pasta recipe',
   'One-pan chicken thighs with crispy potatoes, lemon and garlic for busy weeknights',
@@ -173,6 +204,7 @@ Future<Repo> _seed() async {
       note: note,
       aiDescription: i.isEven ? _descriptions[i ~/ 2 % _descriptions.length] : null,
       aiDone: true,
+      tags: i.isEven ? _tags[i ~/ 2 % _tags.length] : const [],
     );
     // Spread the save dates so "Today / Yesterday / 12 Mar" all show up.
     await repo.db.rawUpdate('UPDATE posts SET created_at = created_at - ? WHERE url = ?', [
@@ -181,8 +213,23 @@ Future<Repo> _seed() async {
     ]);
     i++;
   }
+  // Give the first recipe the full treatment: key points, a place, watched, favorite, a reminder.
+  final first = (await repo.posts()).firstWhere((p) => p.author == 'pasta.grannies');
+  await repo.setExtract(first.id, const [
+    '200 g spaghetti, 4 cloves garlic, 50 g butter',
+    '150 ml cream, parmesan, black pepper',
+    'Fry the garlic in butter for one minute',
+    'Add cream and pasta water, toss with the pasta',
+  ], 'Trattoria Zà Zà, Florence');
+  await repo.setFavorites([first.id], true);
+  await repo.setReminder(first.id, DateTime.now().add(const Duration(days: 1)));
+  final watched = await repo.posts(limit: 5);
+  await repo.setWatched([for (final p in watched) p.id], true);
   return repo;
 }
+
+/// A store whose AI calls are answered by the fake.
+Store _withApi(Store store, Repo repo) => Store(repo, api: _FakeApi(''))..folders = store.folders;
 
 void main() {
   sqfliteFfiInit();
@@ -327,11 +374,56 @@ void main() {
     }, after: () => t.tap(find.text('Show more').first));
   });
 
+  testWidgets('onboarding', (t) => shot(t, 'onboarding', (_, _) async => OnboardingScreen(onDone: () {})));
+
+  testWidgets('tidy', (t) async {
+    await shot(t, 'tidy', (repo, store) async {
+      await repo.db.rawUpdate("UPDATE posts SET folder_id = 'unsorted' WHERE author = 'ramenlab'");
+      await store.reload();
+      return TidyScreen(store: _withApi(store, repo));
+    });
+  });
+
+  testWidgets('ai search', (t) async {
+    await shot(
+      t,
+      'search_ai',
+      (repo, store) async => SearchScreen(store: _withApi(store, repo)),
+      after: () async {
+        await t.enterText(find.byType(TextField), 'easy dinner');
+        await t.pump(const Duration(milliseconds: 300));
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 80)));
+        await t.pump();
+        await t.tap(find.text('Search by meaning'));
+      },
+    );
+  });
+
+  testWidgets('selection', (t) async {
+    await shot(t, 'folder_selecting', (repo, store) async {
+      final f = store.folders.firstWhere((f) => f.name == 'Recipes');
+      return FolderScreen(store: store, folderId: f.id);
+    }, after: () => t.longPress(find.textContaining('@ramenlab')));
+  });
+
+  testWidgets('import folder', (t) async {
+    await shot(
+      t,
+      'share_import',
+      (repo, _) => shareSheet(
+        repo,
+        link:
+            '📁 Trip ideas — shared from Stash\nhttps://youtu.be/dQw4w9WgXcQ\nhttps://vimeo.com/76979871\n'
+            'https://www.instagram.com/reel/XYZ123/',
+      ),
+    );
+  });
+
   testWidgets('post details', (t) async {
     await shot(t, 'post_details', (repo, store) async {
       final f = store.folders.firstWhere((f) => f.name == 'Recipes');
       return FolderScreen(store: store, folderId: f.id);
-    }, after: () => t.longPress(find.textContaining('@pasta.grannies')));
+    }, after: () => t.tap(find.bySemanticsLabel('Post details').last));
   });
 
   testWidgets('folder without previews', (t) async {

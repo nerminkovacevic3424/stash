@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_bg">#FFFFFFFF</color>
+    <color name="widget_text">#FF1B1B1F</color>
+    <color name="widget_muted">#FF5F6170</color>
+    <color name="widget_accent">#FF5B5BD6</color>
+    <string name="widget_name">To watch</string>
+    <string name="widget_description">A saved post you have not watched yet</string>
+    <string name="widget_label">TO WATCH</string>
+    <string name="widget_empty">Share a video to Stash and it will show up here.</string>
+</resources>

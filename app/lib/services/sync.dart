@@ -17,6 +17,10 @@ const _postCols = [
   'note',
   'ai_description',
   'favorite',
+  'watched',
+  'tags',
+  'ai_points',
+  'ai_place',
   'folder_id',
   'created_at',
   'updated_at',
@@ -107,6 +111,7 @@ class SyncService {
     if (table == 'posts') {
       row['meta_status'] = (remote['caption'] ?? remote['thumbnail_url']) != null ? 1 : 0;
       row['ai_status'] = remote['ai_description'] != null ? 1 : 0;
+      row['extract_status'] = remote['ai_points'] != null || remote['ai_place'] != null ? 1 : 0;
       if (!deleted) {
         // Both devices saved the same link independently: keep the incoming copy.
         await db.update(

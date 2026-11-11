@@ -74,6 +74,18 @@ String? extractUrl(String? text) {
   return first;
 }
 
+/// Every distinct link in [text], normalized, in order.
+List<LinkInfo> extractLinks(String? text) {
+  if (text == null) return const [];
+  final seen = <String>{};
+  final out = <LinkInfo>[];
+  for (final m in _urlRe.allMatches(text)) {
+    final link = canonicalize(m[0]!.replaceFirst(_trailing, ''));
+    if (link != null && seen.add(link.url)) out.add(link);
+  }
+  return out;
+}
+
 /// [u] without tracking parameters or fragment; [keep] limits the query to
 /// those names when given.
 String _clean(Uri u, {String? host, Set<String>? keep}) {

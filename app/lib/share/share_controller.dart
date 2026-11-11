@@ -31,6 +31,10 @@ class ShareController extends ChangeNotifier {
 
   /// The AI's one-line summary of the post, when it answered in time.
   String? aiDescription;
+  List<String> aiTags = const [];
+
+  /// When to nudge the user about this post; set from the sheet before saving.
+  DateTime? remindAt;
 
   /// Null until settled.
   FolderSuggestion? suggestion;
@@ -40,6 +44,11 @@ class ShareController extends ChangeNotifier {
   String? newName;
   String newEmoji = '📁';
   bool userPicked = false;
+
+  /// More than one link was shared (a folder someone sent): all of them are
+  /// saved into one folder and previewed later by the queue.
+  List<LinkInfo> bulk = const [];
+  bool get isBulk => bulk.length > 1;
 
   /// Set when this link is already saved.
   Post? duplicate;
@@ -55,7 +64,10 @@ class ShareController extends ChangeNotifier {
   bool _savedNeedsSuggestion = false;
   bool _disposed = false;
 
-  bool get suggesting => suggestion == null && !userPicked && duplicate == null;
+  /// Id of the post this sheet saved, once it has.
+  String? get savedPostId => _savedPostId;
+
+  bool get suggesting => suggestion == null && !userPicked && duplicate == null && !isBulk;
   bool get hasChoice => selected != null || newName != null;
   String get choiceName => newName ?? selected?.name ?? '';
   String? get author => meta?.author ?? link?.author;
@@ -76,6 +88,19 @@ class ShareController extends ChangeNotifier {
 
   Future<void> start(String? sharedText) async {
     folders = await repo.folders();
+    final links = extractLinks(sharedText);
+    if (links.length > 1) {
+      bulk = links;
+      link = links.first;
+      metaLoading = false;
+      // A folder sent from Stash starts with "📁 Name — shared from Stash".
+      final header = RegExp(r'^\s*📁\s*(.+?)(?:\s+[—–-]\s+.*)?$').firstMatch(sharedText!.trim().split('\n').first);
+      final name = header?[1]?.trim();
+      selected = name == null ? null : folders.where((f) => f.name.toLowerCase() == name.toLowerCase()).firstOrNull;
+      if (selected == null) newName = name == null || name.isEmpty ? 'Shared with me' : name;
+      _notify();
+      return;
+    }
     final raw = extractUrl(sharedText);
     // Apps often share a title next to the link ("Watch … on YouTube").
     // Keep it as a stand-in caption for when the site gives us none.
@@ -147,8 +172,9 @@ class ShareController extends ChangeNotifier {
           );
           s = answer.suggestion;
           aiDescription = answer.description;
+          aiTags = answer.tags;
           _aiAnswered = true;
-          if (_savedPostId != null) await repo.setAi(_savedPostId!, aiDescription);
+          if (_savedPostId != null) await repo.setAi(_savedPostId!, aiDescription, tags: aiTags);
           _notify();
         } on Unreachable {
           reachable = false;
@@ -246,6 +272,20 @@ class ShareController extends ChangeNotifier {
     stage = ShareStage.saving;
     _notify();
 
+    if (isBulk) {
+      final target = selected ?? await repo.createFolder(newName!, emoji: newEmoji);
+      var added = 0;
+      for (final b in bulk) {
+        if (await repo.findByUrl([b.url]) != null) continue;
+        await repo.insertPost(link: b, sourceUrl: b.url, folderId: target.id);
+        added++;
+      }
+      confirmation = added == 0 ? 'Already saved' : 'Saved $added to ${target.name}';
+      stage = ShareStage.saved;
+      _notify();
+      return;
+    }
+
     final folder = selected ?? await repo.createFolder(newName!, emoji: newEmoji);
     final dup = duplicate;
     if (dup != null) {
@@ -266,6 +306,8 @@ class ShareController extends ChangeNotifier {
         needsSuggestion: _savedNeedsSuggestion,
         aiDescription: aiDescription,
         aiDone: _aiAnswered,
+        tags: aiTags,
+        remindAt: remindAt,
       );
       confirmation = 'Saved to ${folder.name}';
     }

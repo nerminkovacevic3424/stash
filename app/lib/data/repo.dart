@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -40,6 +41,12 @@ const schema = <String>[
     ai_description TEXT,
     ai_status INTEGER NOT NULL DEFAULT 0,
     favorite INTEGER NOT NULL DEFAULT 0,
+    watched INTEGER NOT NULL DEFAULT 0,
+    tags TEXT,
+    ai_points TEXT,
+    ai_place TEXT,
+    extract_status INTEGER NOT NULL DEFAULT 0,
+    remind_at INTEGER,
     deleted INTEGER NOT NULL DEFAULT 0,
     dirty INTEGER NOT NULL DEFAULT 1)''',
   'CREATE INDEX IF NOT EXISTS posts_folder ON posts(folder_id, created_at)',
@@ -108,6 +115,17 @@ class Repo {
           }
           if (!have.contains('favorite')) {
             await db.execute('ALTER TABLE posts ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0');
+          }
+          const added = {
+            'watched': 'INTEGER NOT NULL DEFAULT 0',
+            'tags': 'TEXT',
+            'ai_points': 'TEXT',
+            'ai_place': 'TEXT',
+            'extract_status': 'INTEGER NOT NULL DEFAULT 0',
+            'remind_at': 'INTEGER',
+          };
+          for (final e in added.entries) {
+            if (!have.contains(e.key)) await db.execute('ALTER TABLE posts ADD COLUMN ${e.key} ${e.value}');
           }
         },
       ),
@@ -205,10 +223,23 @@ class Repo {
 
   // ---- posts ----
 
-  Future<List<Post>> posts({String? folderId, Platform2? platform, String? query, int? limit, bool? favorite}) async {
+  Future<List<Post>> posts({
+    String? folderId,
+    Platform2? platform,
+    String? query,
+    int? limit,
+    bool? favorite,
+    bool? watched,
+    String? tag,
+  }) async {
     final where = ['deleted = 0'];
     final args = <Object?>[];
     if (favorite != null) where.add('favorite = ${favorite ? 1 : 0}');
+    if (watched != null) where.add('watched = ${watched ? 1 : 0}');
+    if (tag != null) {
+      where.add('tags LIKE ?');
+      args.add('%,$tag,%');
+    }
     if (folderId != null) {
       where.add('folder_id = ?');
       args.add(folderId);
@@ -221,9 +252,9 @@ class Repo {
     if (q.isNotEmpty) {
       final like = '%${q.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%';
       where.add(
-        "(ai_description LIKE ? ESCAPE '\\' OR caption LIKE ? ESCAPE '\\' OR author LIKE ? ESCAPE '\\' OR author_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\')",
+        "(tags LIKE ? ESCAPE '\\' OR ai_description LIKE ? ESCAPE '\\' OR caption LIKE ? ESCAPE '\\' OR author LIKE ? ESCAPE '\\' OR author_name LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\')",
       );
-      args.addAll([like, like, like, like, like]);
+      args.addAll([like, like, like, like, like, like]);
     }
     final rows = await db.query(
       'posts',
@@ -258,6 +289,8 @@ class Repo {
     bool needsSuggestion = false,
     String? aiDescription,
     bool aiDone = false,
+    List<String> tags = const [],
+    DateTime? remindAt,
   }) async {
     final id = newId();
     final now = _now();
@@ -278,6 +311,8 @@ class Repo {
       'needs_suggestion': needsSuggestion ? 1 : 0,
       'ai_description': aiDescription,
       'ai_status': aiDone ? 1 : 0,
+      'tags': encodeTags(tags),
+      'remind_at': remindAt?.millisecondsSinceEpoch,
     });
     return id;
   }
@@ -334,24 +369,76 @@ class Repo {
   }
 
   /// The platforms that have posts in this scope, most used first.
-  Future<List<Platform2>> platforms({String? folderId, bool? favorite}) async {
+  Future<List<Platform2>> platforms({String? folderId, bool? favorite, bool? watched, String? tag}) async {
     final where = [
       'deleted = 0',
       if (folderId != null) 'folder_id = ?',
       if (favorite != null) 'favorite = ${favorite ? 1 : 0}',
+      if (watched != null) 'watched = ${watched ? 1 : 0}',
+      if (tag != null) 'tags LIKE ?',
     ];
     final rows = await db.rawQuery(
       'SELECT platform FROM posts WHERE ${where.join(' AND ')} GROUP BY platform ORDER BY COUNT(*) DESC',
-      [?folderId],
+      [?folderId, if (tag != null) '%,$tag,%'],
     );
     return [for (final r in rows) Platform2.parse(r['platform'] as String?)];
   }
 
-  /// Total and favorite post counts, for the home screen.
-  Future<(int, int)> counts() async {
-    final r = (await db.rawQuery('SELECT COUNT(*) AS n, COALESCE(SUM(favorite), 0) AS f FROM posts WHERE deleted = 0'))
-        .first;
-    return (r['n'] as int, r['f'] as int);
+  /// Total, favorite and not-yet-watched post counts, for the home screen.
+  Future<(int, int, int)> counts() async {
+    final r = (await db.rawQuery(
+      'SELECT COUNT(*) AS n, COALESCE(SUM(favorite), 0) AS f, COALESCE(SUM(1 - watched), 0) AS u '
+      'FROM posts WHERE deleted = 0',
+    )).first;
+    return (r['n'] as int, r['f'] as int, r['u'] as int);
+  }
+
+  /// The most used tags with how many posts carry each, most used first.
+  Future<List<MapEntry<String, int>>> topTags({int limit = 12}) async {
+    final rows = await db.query('posts', columns: ['tags'], where: 'deleted = 0 AND tags IS NOT NULL');
+    final counts = <String, int>{};
+    for (final r in rows) {
+      for (final t in decodeTags(r['tags'] as String?)) {
+        counts[t] = (counts[t] ?? 0) + 1;
+      }
+    }
+    final sorted = counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    return sorted.take(limit).toList();
+  }
+
+  Future<void> _setFlag(Iterable<String> ids, Map<String, Object?> values) async {
+    final now = _now();
+    final b = db.batch();
+    for (final id in ids) {
+      b.update('posts', {...values, 'updated_at': now, 'dirty': 1}, where: 'id = ?', whereArgs: [id]);
+    }
+    await b.commit(noResult: true);
+  }
+
+  Future<void> setWatched(Iterable<String> ids, bool watched) => _setFlag(ids, {'watched': watched ? 1 : 0});
+
+  Future<void> setFavorites(Iterable<String> ids, bool favorite) => _setFlag(ids, {'favorite': favorite ? 1 : 0});
+
+  Future<void> deletePosts(Iterable<String> ids) => _setFlag(ids, {'deleted': 1});
+
+  /// Null clears the reminder.
+  Future<void> setReminder(String id, DateTime? when) => _setFlag([id], {'remind_at': when?.millisecondsSinceEpoch});
+
+  /// Moves everything from one folder into another and removes the first.
+  Future<void> mergeFolders(String fromId, String intoId) async {
+    if (fromId == intoId || fromId == unsortedId) return;
+    final now = _now();
+    await db.transaction((t) async {
+      await t.update(
+        'posts',
+        {'folder_id': intoId, 'updated_at': now, 'dirty': 1},
+        where: 'folder_id = ? AND deleted = 0',
+        whereArgs: [fromId],
+      );
+      await t.update('folders', {'deleted': 1, 'updated_at': now, 'dirty': 1}, where: 'id = ?', whereArgs: [fromId]);
+      await t.update('author_rules', {'folder_id': intoId}, where: 'folder_id = ?', whereArgs: [fromId]);
+      await t.delete('keyword_rules', where: 'folder_id = ?', whereArgs: [fromId]);
+    });
   }
 
   Future<void> setFavorite(String id, bool favorite) => db.update(
@@ -387,11 +474,32 @@ class Repo {
     orderBy: 'created_at',
   )).map(Post.fromRow).toList();
 
-  /// Records the AI's description (may be null) and marks the post as seen.
-  Future<void> setAi(String postId, String? description) => db.rawUpdate(
-    'UPDATE posts SET ai_description = COALESCE(?, ai_description), ai_status = 1, updated_at = ?, dirty = 1 WHERE id = ?',
-    [description, _now(), postId],
+  /// Records the AI's description and tags (either may be empty) and marks
+  /// the post as seen.
+  Future<void> setAi(String postId, String? description, {List<String> tags = const []}) => db.rawUpdate(
+    'UPDATE posts SET ai_description = COALESCE(?, ai_description), tags = COALESCE(?, tags), ai_status = 1, '
+    'updated_at = ?, dirty = 1 WHERE id = ?',
+    [description, encodeTags(tags), _now(), postId],
   );
+
+  /// Described posts whose caption is long enough to hold something practical
+  /// and has not been mined yet.
+  Future<List<Post>> pendingExtract() async => (await db.query(
+    'posts',
+    where: 'deleted = 0 AND ai_status = 1 AND extract_status = 0 AND LENGTH(COALESCE(caption, \'\')) >= 60',
+    orderBy: 'created_at DESC',
+    limit: 20,
+  )).map(Post.fromRow).toList();
+
+  Future<void> setExtract(String postId, List<String> points, String? place) => db.rawUpdate(
+    'UPDATE posts SET ai_points = ?, ai_place = ?, extract_status = 1, updated_at = ?, dirty = 1 WHERE id = ?',
+    [points.isEmpty ? null : jsonEncode(points), place, _now(), postId],
+  );
+
+  Future<Post?> post(String id) async {
+    final r = await db.query('posts', where: 'id = ? AND deleted = 0', whereArgs: [id]);
+    return r.isEmpty ? null : Post.fromRow(r.first);
+  }
 
   // ---- suggestion inputs & learning ----
 
