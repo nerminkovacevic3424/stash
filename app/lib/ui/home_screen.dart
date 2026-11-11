@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/store.dart';
 import '../models.dart';
+import '../services/link_parser.dart';
+import '../share/share_sheet.dart';
 import 'account_screen.dart';
 import 'folder_screen.dart';
 import 'folder_sheets.dart';
@@ -111,6 +116,11 @@ class HomeScreen extends StatelessWidget {
                               ],
                             ),
                           ),
+                          IconButton(
+                            tooltip: 'Add a link',
+                            icon: const Icon(Icons.add_link_rounded),
+                            onPressed: () => addLinkFlow(context, store),
+                          ),
                           PopupMenuButton<String>(
                             tooltip: 'More',
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -132,6 +142,34 @@ class HomeScreen extends StatelessWidget {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
                         child: _SearchPill(onTap: () => _push(context, SearchScreen(store: store))),
+                      ),
+                    ),
+                  if (!empty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _QuickTile(
+                                icon: Icons.grid_view_rounded,
+                                label: 'All posts',
+                                count: store.total,
+                                onTap: () => _push(context, FolderScreen(store: store)),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _QuickTile(
+                                icon: Icons.favorite_rounded,
+                                iconColor: const Color(0xFFE5484D),
+                                label: 'Favorites',
+                                count: store.favorites,
+                                onTap: () => _push(context, FolderScreen(store: store, favoritesOnly: true)),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   if (empty)
@@ -189,6 +227,96 @@ class HomeScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Paste a link (the clipboard is offered if it holds one) and file it with
+/// the same sheet the share menu uses.
+Future<void> addLinkFlow(BuildContext context, Store store) async {
+  String? clip;
+  try {
+    clip = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+  } catch (_) {}
+  if (!context.mounted) return;
+  final controller = TextEditingController(text: extractUrl(clip) ?? '');
+  final text = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Add a link'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        keyboardType: TextInputType.url,
+        autocorrect: false,
+        minLines: 1,
+        maxLines: 3,
+        onSubmitted: (v) => Navigator.pop(context, v),
+        decoration: const InputDecoration(hintText: 'Paste a video or post link'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Continue')),
+      ],
+    ),
+  );
+  if (text == null || !context.mounted) return;
+  if (extractUrl(text) == null) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('That does not look like a link')));
+    return;
+  }
+  await Navigator.push(
+    context,
+    PageRouteBuilder<void>(
+      opaque: false,
+      pageBuilder: (routeContext, _, _) => ShareSheet(
+        repo: store.repo,
+        api: store.api,
+        sharedText: text,
+        onClose: () => Navigator.of(routeContext).pop(),
+      ),
+    ),
+  );
+  await store.reload();
+  unawaited(store.background());
+}
+
+class _QuickTile extends StatelessWidget {
+  const _QuickTile({required this.icon, required this.label, required this.count, required this.onTap, this.iconColor});
+  final IconData icon;
+  final Color? iconColor;
+  final String label;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      button: true,
+      label: '$label, $count',
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: iconColor ?? scheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(label, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+                Text('$count', style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -258,7 +386,7 @@ class _RecentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: post.author != null ? 'Post by ${post.author}' : '${post.platform.label} post',
+    label: postTitle(post),
     child: GestureDetector(
       onTap: () => openPost(context, post),
       onLongPress: () => showPostDetails(context, store, post),
@@ -416,7 +544,7 @@ class _EmptyState extends StatelessWidget {
         children: [
           Text('Save your first post', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 20),
-          step('1', 'Open a post in Instagram or TikTok'),
+          step('1', 'Open a video in Instagram, TikTok, YouTube or Facebook'),
           step('2', 'Tap Share, then choose Stash'),
           step('3', 'Tap Save. Stash picks the folder'),
           const SizedBox(height: 12),

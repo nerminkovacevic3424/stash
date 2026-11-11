@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -8,7 +9,7 @@ import 'link_parser.dart';
 /// Fetches a post's preview (cover image, author, caption) straight from the
 /// phone.
 ///
-/// Instagram and TikTok answer ordinary devices far more readily than they
+/// The platforms answer ordinary devices far more readily than they
 /// answer cloud servers, so this is tried before the backend. It only reads
 /// what the platforms publish for link previews and embeds. The same parsing
 /// lives in backend/lib/metadata.js.
@@ -19,22 +20,52 @@ class DeviceMeta {
   static const _ua = 'StashLinkPreview/1.0 (link preview fetcher)';
   static const _timeout = Duration(seconds: 5);
 
-  /// Null when [rawUrl] is not an Instagram/TikTok link. Throws when the
-  /// network is down.
+  /// Null when [rawUrl] is not a web link. Throws when the network is down.
   Future<PostMeta?> fetch(String rawUrl) async {
     final link = await _resolve(rawUrl);
     if (link == null) return null;
 
     var meta = const PreviewFields();
-    if (link.platform == Platform2.tiktok) {
-      meta = meta.or(await _try(() async => parseTikTokOembed(await _get(_oembed(link.url)))));
-      if (!meta.complete) meta = meta.or(await _try(() async => parseTikTokPage(await _get(link.url))));
-    } else {
-      meta = meta.or(await _try(() async => parseInstagramPage(await _get(link.url))));
-      if (!meta.complete) {
-        meta = meta.or(await _try(() async => parseInstagramEmbed(await _get('${link.url}embed/captioned/'))));
-      }
+    switch (link.platform) {
+      case Platform2.tiktok:
+        meta = meta.or(
+          await _try(() async => parseTikTokOembed(await _get(_oembed('www.tiktok.com/oembed', link.url)))),
+        );
+        if (!meta.complete) meta = meta.or(await _try(() async => parseTikTokPage(await _get(link.url))));
+      case Platform2.instagram:
+        meta = meta.or(await _try(() async => parseInstagramPage(await _get(link.url))));
+        if (!meta.complete) {
+          meta = meta.or(await _try(() async => parseInstagramEmbed(await _get('${link.url}embed/captioned/'))));
+        }
+      case Platform2.youtube:
+        meta = meta.or(
+          await _try(
+            () async => parseYouTubeOembed(await _get('${_oembed('www.youtube.com/oembed', link.url)}&format=json')),
+          ),
+        );
+        // Every video has a cover at a fixed address, even when oEmbed is refused.
+        final id = youtubeId(Uri.parse(link.url));
+        if (meta.thumbnailUrl == null && id != null) {
+          meta = meta.or(PreviewFields(thumbnailUrl: 'https://i.ytimg.com/vi/$id/hqdefault.jpg'));
+        }
+        if (meta.caption == null) {
+          meta = meta.or(await _try(() async => parseGenericPage(await _get(link.url, follow: true))));
+        }
+      case Platform2.x:
+        meta = meta.or(
+          await _try(
+            () async => parseXOembed(await _get('${_oembed('publish.twitter.com/oembed', link.url)}&omit_script=1')),
+          ),
+        );
+        if (!meta.complete) {
+          meta = meta.or(await _try(() async => parseGenericPage(await _get(link.url, follow: true))));
+        }
+      case Platform2.facebook:
+      case Platform2.other:
+        meta = meta.or(await _try(() async => parseGenericPage(await _get(link.url, follow: true))));
     }
+
+    if (_boilerplate.contains(meta.caption?.toLowerCase())) meta = meta.withoutCaption();
 
     return PostMeta(
       url: link.url,
@@ -48,7 +79,7 @@ class DeviceMeta {
     );
   }
 
-  static String _oembed(String url) => 'https://www.tiktok.com/oembed?url=${Uri.encodeQueryComponent(url)}';
+  static String _oembed(String endpoint, String url) => 'https://$endpoint?url=${Uri.encodeQueryComponent(url)}';
 
   /// A page that answers but has nothing useful is not an error; a dead
   /// network is, and is rethrown so the caller can tell "offline" apart.
@@ -59,19 +90,22 @@ class DeviceMeta {
       return const PreviewFields();
     } on FormatException {
       return const PreviewFields();
+    } on TimeoutException {
+      // A site that is slow to answer is not the same as being offline.
+      return const PreviewFields();
     }
   }
 
-  Future<http.StreamedResponse> _send(String url) {
+  Future<http.StreamedResponse> _send(String url, {bool follow = false}) {
     final req = http.Request('GET', Uri.parse(url))
-      ..followRedirects = false
+      ..followRedirects = follow
       ..headers['user-agent'] = _ua
       ..headers['accept'] = 'text/html,application/json';
     return _client.send(req).timeout(_timeout);
   }
 
-  Future<String> _get(String url) async {
-    final res = await _send(url);
+  Future<String> _get(String url, {bool follow = false}) async {
+    final res = await _send(url, follow: follow);
     if (res.statusCode != 200) {
       await res.stream.drain<void>().catchError((_) {});
       throw _HttpStatus();
@@ -91,7 +125,7 @@ class DeviceMeta {
       if (res.statusCode < 300 || res.statusCode >= 400 || loc == null) break;
       final target = Uri.parse(next).resolve(loc).toString();
       final c = canonicalize(target);
-      if (c == null) break;
+      if (c == null || c.platform != current.platform) break; // wandered off to a login page or store
       current = c;
       next = target;
     }
@@ -101,6 +135,18 @@ class DeviceMeta {
 
 class _HttpStatus implements Exception {}
 
+/// Titles a platform serves when it shows a login wall instead of the post.
+const _boilerplate = {
+  'facebook',
+  'instagram',
+  'tiktok',
+  'tiktok - make your day',
+  'youtube',
+  'x',
+  'log in or sign up to view',
+  'log into facebook',
+};
+
 class PreviewFields {
   const PreviewFields({this.author, this.authorName, this.caption, this.thumbnailUrl});
   final String? author;
@@ -109,6 +155,8 @@ class PreviewFields {
   final String? thumbnailUrl;
 
   bool get complete => caption != null && thumbnailUrl != null;
+
+  PreviewFields withoutCaption() => PreviewFields(author: author, authorName: authorName, thumbnailUrl: thumbnailUrl);
 
   PreviewFields or(PreviewFields o) => PreviewFields(
     author: author ?? o.author,
@@ -218,5 +266,50 @@ PreviewFields parseInstagramEmbed(String html) {
     author: _nonEmpty(handle)?.toLowerCase(),
     caption: caption,
     thumbnailUrl: img == null ? null : _decodeEntities(img),
+  );
+}
+
+PreviewFields parseYouTubeOembed(String body) {
+  final d = jsonDecode(body);
+  if (d is! Map) return const PreviewFields();
+  final handle = RegExp(r'youtube\.com/@([^/?]+)').firstMatch('${d['author_url'] ?? ''}')?[1];
+  final name = _nonEmpty(d['author_name']);
+  return PreviewFields(
+    author: (handle ?? name)?.toLowerCase(),
+    authorName: name,
+    caption: _nonEmpty(d['title']),
+    thumbnailUrl: _nonEmpty(d['thumbnail_url']),
+  );
+}
+
+/// X's public embed endpoint returns the post as a small HTML snippet.
+PreviewFields parseXOembed(String body) {
+  final d = jsonDecode(body);
+  if (d is! Map) return const PreviewFields();
+  final p = RegExp(r'<p[^>]*>([\s\S]*?)</p>').firstMatch('${d['html'] ?? ''}')?[1];
+  final text = p == null
+      ? null
+      : _nonEmpty(_decodeEntities(p.replaceAll(RegExp(r'<br\s*/?>'), '\n').replaceAll(RegExp(r'<[^>]+>'), '')));
+  final handle = RegExp(r'(?:x|twitter)\.com/([^/?]+)').firstMatch('${d['author_url'] ?? ''}')?[1];
+  return PreviewFields(author: handle?.toLowerCase(), authorName: _nonEmpty(d['author_name']), caption: text);
+}
+
+/// Link-preview tags that almost every site publishes (Open Graph, Twitter
+/// cards, or at least a title). Used for Facebook and any other site.
+PreviewFields parseGenericPage(String html) {
+  final head = html.length > 300000 ? html.substring(0, 300000) : html;
+  final title =
+      _metaTag(head, 'og:title') ??
+      _metaTag(head, 'twitter:title') ??
+      _nonEmpty(
+        _decodeEntities(RegExp(r'<title[^>]*>([^<]*)</title>', caseSensitive: false).firstMatch(head)?[1] ?? ''),
+      );
+  final desc =
+      _metaTag(head, 'og:description') ?? _metaTag(head, 'twitter:description') ?? _metaTag(head, 'description');
+  final caption = [title, if (desc != null && desc != title) desc].whereType<String>().join('\n');
+  return PreviewFields(
+    authorName: _metaTag(head, 'author') ?? _metaTag(head, 'og:site_name'),
+    caption: _nonEmpty(caption),
+    thumbnailUrl: _metaTag(head, 'og:image') ?? _metaTag(head, 'twitter:image'),
   );
 }

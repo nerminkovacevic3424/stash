@@ -72,13 +72,34 @@ void main() {
 
   test('parses shared text', () {
     expect(extractUrl('wow https://vm.tiktok.com/ZMabc/ !!'), 'https://vm.tiktok.com/ZMabc/');
-    expect(extractUrl('https://example.com/instagram.com/p/x'), isNull);
+    expect(extractUrl('see https://example.com/a then https://youtu.be/dQw4w9WgXcQ'), 'https://youtu.be/dQw4w9WgXcQ');
+    expect(extractUrl('just words'), isNull);
     expect(canonicalize('https://instagram.com/reels/Cabc/?x=1')!.url, 'https://www.instagram.com/reel/Cabc/');
     expect(canonicalize('https://www.instagram.com/share/reel/BAx')!.needsResolve, isTrue);
     final t = canonicalize('https://www.tiktok.com/@Some.User/video/73012?lang=en')!;
     expect(t.url, 'https://www.tiktok.com/@Some.User/video/73012');
     expect(t.author, 'some.user');
     expect(canonicalize('https://vm.tiktok.com/ZMabc/')!.needsResolve, isTrue);
+    // YouTube, Facebook, X and any other site
+    expect(canonicalize('https://youtu.be/dQw4w9WgXcQ?si=abc')!.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    expect(canonicalize('https://m.youtube.com/watch?v=dQw4w9WgXcQ&t=10s&feature=share')!.platform, Platform2.youtube);
+    expect(
+      canonicalize('https://youtube.com/shorts/abcDEF12345?feature=share')!.url,
+      'https://www.youtube.com/shorts/abcDEF12345',
+    );
+    expect(canonicalize('https://fb.watch/abc123/')!.needsResolve, isTrue);
+    expect(
+      canonicalize('https://m.facebook.com/watch/?v=123&mibextid=xyz')!.url,
+      'https://www.facebook.com/watch/?v=123',
+    );
+    final tweet = canonicalize('https://twitter.com/NASA/status/141?s=20&t=abc')!;
+    expect(tweet.url, 'https://x.com/NASA/status/141');
+    expect(tweet.author, 'nasa');
+    final other = canonicalize('https://vimeo.com/76979871?utm_source=x&share=copy#t=1')!;
+    expect(other.platform, Platform2.other);
+    expect(other.url, 'https://vimeo.com/76979871?share=copy');
+    expect(sourceLabel(other.platform, other.url), 'vimeo.com');
+    expect(canonicalize('not a link'), isNull);
     expect(keywordsOf('Easy #Pasta night with garlic'), {'pasta': 2, 'easy': 1, 'night': 1, 'garlic': 1});
   });
 
@@ -144,6 +165,25 @@ void main() {
     final post = (await repo.posts()).single;
     expect(post.folderId, recipes.id);
     expect(post.needsSuggestion, isFalse);
+  });
+
+  test('favorites, platform list and the shared title as a stand-in caption', () async {
+    api.online = false; // no preview available
+    final c = await share('Watch "Knife skills 101" on YouTube https://youtu.be/dQw4w9WgXcQ');
+    expect(c.link?.platform, Platform2.youtube);
+    expect(c.meta?.caption, 'Watch "Knife skills 101" on YouTube');
+    await c.save('');
+    api.online = true;
+    await (await share(reel1)).save('');
+
+    final yt = (await repo.posts(platform: Platform2.youtube)).single;
+    expect(yt.caption, contains('Knife skills'));
+    expect(await repo.platforms(), unorderedEquals([Platform2.youtube, Platform2.instagram]));
+
+    await repo.setFavorite(yt.id, true);
+    expect((await repo.posts(favorite: true)).single.id, yt.id);
+    expect(await repo.counts(), (2, 1));
+    expect(await repo.platforms(favorite: true), [Platform2.youtube]);
   });
 
   test('AI suggestion is pre-selected and saved in one step', () async {

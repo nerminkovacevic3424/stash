@@ -1,4 +1,4 @@
-import { resolve } from './urls.js';
+import { resolve, youtubeId } from './urls.js';
 
 const TIMEOUT_MS = 4000;
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -45,6 +45,20 @@ async function tiktok(url) {
     authorName: d.author_name || null,
     caption: d.title || null,
     thumbnailUrl: d.thumbnail_url || null,
+  };
+}
+
+async function youtube(url) {
+  const id = youtubeId(new URL(url));
+  // Every video has a cover at a fixed address, even when oEmbed is refused.
+  const cover = id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null;
+  const d = await getJson(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`).catch(() => ({}));
+  const handle = d.author_url?.match(/youtube\.com\/@([^/?]+)/)?.[1];
+  return {
+    author: (handle || d.author_name || '').toLowerCase() || null,
+    authorName: d.author_name || null,
+    caption: d.title || null,
+    thumbnailUrl: d.thumbnail_url || cover,
   };
 }
 
@@ -143,6 +157,11 @@ export function parseTikTokPage(html) {
   };
 }
 
+const BOILERPLATE = new Set([
+  'facebook', 'instagram', 'tiktok', 'tiktok - make your day', 'youtube', 'x', 'log in or sign up to view',
+  'log into facebook',
+]);
+
 const merge = (a, b) => Object.fromEntries(['author', 'authorName', 'caption', 'thumbnailUrl'].map((k) => [k, a[k] || b[k] || null]));
 
 /** Resolves short links, then fetches preview metadata. Never throws. */
@@ -155,8 +174,8 @@ export async function fetchMetadata(rawUrl) {
 
   let meta = {};
   try {
-    const oembed = link.platform === 'tiktok' ? tiktok : instagramOembed;
-    meta = await oembed(link.url).catch(() => ({}));
+    const first = { tiktok, instagram: instagramOembed, youtube }[link.platform];
+    meta = first ? await first(link.url).catch(() => ({})) : {};
     if (!meta.caption || !meta.thumbnailUrl) {
       meta = merge(meta, await openGraph(link.url, link.platform).catch(() => ({})));
     }
@@ -164,12 +183,16 @@ export async function fetchMetadata(rawUrl) {
       const more =
         link.platform === 'tiktok'
           ? getHtml(link.url).then(parseTikTokPage)
-          : getHtml(`${link.url}embed/captioned/`).then(parseInstagramEmbed);
-      meta = merge(meta, await more.catch(() => ({})));
+          : link.platform === 'instagram'
+            ? getHtml(`${link.url}embed/captioned/`).then(parseInstagramEmbed)
+            : null;
+      if (more) meta = merge(meta, await more.catch(() => ({})));
     }
   } catch {
     meta = {};
   }
+
+  if (BOILERPLATE.has(String(meta.caption ?? '').toLowerCase())) meta.caption = null;
 
   const value = {
     url: link.url,

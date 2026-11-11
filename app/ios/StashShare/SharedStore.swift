@@ -42,6 +42,7 @@ final class SharedStore {
           meta_status INTEGER NOT NULL DEFAULT 0, meta_attempts INTEGER NOT NULL DEFAULT 0,
           needs_suggestion INTEGER NOT NULL DEFAULT 0,
           ai_description TEXT, ai_status INTEGER NOT NULL DEFAULT 0,
+          favorite INTEGER NOT NULL DEFAULT 0,
           deleted INTEGER NOT NULL DEFAULT 0, dirty INTEGER NOT NULL DEFAULT 1)
         """,
         "CREATE INDEX IF NOT EXISTS posts_folder ON posts(folder_id, created_at)",
@@ -79,6 +80,7 @@ final class SharedStore {
         let columns = Set(query("PRAGMA table_info(posts)").compactMap { $0["name"] as? String })
         if !columns.contains("ai_description") { run("ALTER TABLE posts ADD COLUMN ai_description TEXT") }
         if !columns.contains("ai_status") { run("ALTER TABLE posts ADD COLUMN ai_status INTEGER NOT NULL DEFAULT 0") }
+        if !columns.contains("favorite") { run("ALTER TABLE posts ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0") }
         // sqflite tracks its schema version here; set it so the app does not re-run onCreate.
         if (query("PRAGMA user_version").first?["user_version"] as? Int64 ?? 0) == 0 {
             run("PRAGMA user_version = 1")

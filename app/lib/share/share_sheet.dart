@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../data/repo.dart';
 import '../models.dart';
 import '../services/api.dart';
+import '../services/link_parser.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'share_controller.dart';
@@ -198,7 +199,7 @@ class _ShareSheetState extends State<ShareSheet> {
           Text('Nothing to save here', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           Text(
-            'Stash saves Instagram and TikTok posts. Share a post, reel or video link to file it.',
+            'Stash saves links. Share a video or post from Instagram, TikTok, YouTube, Facebook or any site.',
             style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 20),
@@ -365,7 +366,9 @@ class _Preview extends StatelessWidget {
                 const Skeleton(width: 110)
               else
                 Text(
-                  '${link.platform.label} post',
+                  link.platform == Platform2.other
+                      ? sourceLabel(link.platform, link.url)
+                      : '${link.platform.label} post',
                   style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
               const SizedBox(height: 5),

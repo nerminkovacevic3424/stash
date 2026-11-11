@@ -2,12 +2,18 @@ const unsortedId = 'unsorted';
 
 enum Platform2 {
   instagram('Instagram'),
-  tiktok('TikTok');
+  tiktok('TikTok'),
+  youtube('YouTube'),
+  facebook('Facebook'),
+  x('X'),
+
+  /// Any other site. Show `sourceLabel(platform, url)` instead of this label.
+  other('Web');
 
   const Platform2(this.label);
   final String label;
 
-  static Platform2 parse(String? s) => s == 'tiktok' ? tiktok : instagram;
+  static Platform2 parse(String? s) => values.firstWhere((p) => p.name == s, orElse: () => other);
 }
 
 class Folder {
@@ -60,6 +66,7 @@ class Post {
     this.thumbnailUrl,
     this.note,
     this.aiDescription,
+    this.favorite = false,
     this.metaStatus = 0,
     this.needsSuggestion = false,
   });
@@ -82,6 +89,7 @@ class Post {
 
   /// One-sentence summary written by the AI from the caption and cover image.
   final String? aiDescription;
+  final bool favorite;
 
   /// 0 = metadata still to fetch, 1 = fetched, 2 = gave up.
   final int metaStatus;
@@ -100,6 +108,7 @@ class Post {
     thumbnailUrl: r['thumbnail_url'] as String?,
     note: r['note'] as String?,
     aiDescription: r['ai_description'] as String?,
+    favorite: r['favorite'] == 1,
     metaStatus: r['meta_status'] as int,
     needsSuggestion: r['needs_suggestion'] == 1,
   );

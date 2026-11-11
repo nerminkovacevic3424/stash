@@ -11,6 +11,7 @@ test('extracts the post URL from shared text', () => {
   assert.equal(extractUrl('see https://example.com/x and https://vm.tiktok.com/ZMabc/'), 'https://vm.tiktok.com/ZMabc/');
   assert.equal(extractUrl('no links here'), null);
   assert.equal(extractUrl('https://evil.com/instagram.com/p/x'), null);
+  assert.equal(extractUrl('watch https://youtu.be/dQw4w9WgXcQ?si=a'), 'https://youtu.be/dQw4w9WgXcQ?si=a');
 });
 
 test('canonicalizes Instagram URLs', () => {
@@ -28,6 +29,17 @@ test('canonicalizes TikTok URLs', () => {
   assert.equal(canonicalize('https://vm.tiktok.com/ZMabc/').needsResolve, true);
   assert.equal(canonicalize('https://www.tiktok.com/t/ZTabc/').needsResolve, true);
   assert.equal(canonicalize('https://example.com/'), null);
+});
+
+test('canonicalizes YouTube, Facebook and X URLs', () => {
+  assert.equal(canonicalize('https://youtu.be/dQw4w9WgXcQ?si=abc').url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(canonicalize('https://youtube.com/shorts/abcDEF12345?feature=share').url, 'https://www.youtube.com/shorts/abcDEF12345');
+  assert.equal(canonicalize('https://fb.watch/abc123/').needsResolve, true);
+  assert.equal(canonicalize('https://m.facebook.com/watch/?v=123&mibextid=x').url, 'https://www.facebook.com/watch/?v=123');
+  const t = canonicalize('https://twitter.com/NASA/status/141?s=20');
+  assert.equal(t.url, 'https://x.com/NASA/status/141');
+  assert.equal(t.author, 'nasa');
+  assert.equal(canonicalize('https://vimeo.com/76979871'), null); // other sites are previewed on the phone
 });
 
 test('extracts hashtags', () => {

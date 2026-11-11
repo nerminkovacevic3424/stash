@@ -16,6 +16,7 @@ const _postCols = [
   'thumbnail_url',
   'note',
   'ai_description',
+  'favorite',
   'folder_id',
   'created_at',
   'updated_at',

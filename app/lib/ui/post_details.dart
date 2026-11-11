@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/store.dart';
 import '../models.dart';
+import '../services/link_parser.dart';
 import 'post_card.dart';
 import 'widgets.dart';
 
@@ -80,12 +81,15 @@ class _PostDetails extends StatelessWidget {
                         children: [
                           PlatformBadge(post.platform, size: 22),
                           const SizedBox(width: 8),
-                          Text(post.platform.label, style: theme.textTheme.labelLarge?.copyWith(color: muted)),
+                          Text(
+                            sourceLabel(post.platform, post.url),
+                            style: theme.textTheme.labelLarge?.copyWith(color: muted),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        post.author != null ? '@${post.author}' : '${post.platform.label} post',
+                        postTitle(post),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
@@ -167,11 +171,17 @@ class _PostDetails extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => onAction(PostAction.open),
               icon: const Icon(Icons.open_in_new_rounded, size: 20),
-              label: Text('Open in ${post.platform.label}'),
+              label: Text(post.platform == Platform2.other ? 'Open link' : 'Open in ${post.platform.label}'),
             ),
             const SizedBox(height: 10),
             Row(
               children: [
+                _Action(
+                  icon: post.favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  label: post.favorite ? 'Favorited' : 'Favorite',
+                  color: post.favorite ? const Color(0xFFE5484D) : null,
+                  onTap: () => onAction(PostAction.favorite),
+                ),
                 _Action(icon: Icons.drive_file_move_outline, label: 'Move', onTap: () => onAction(PostAction.move)),
                 _Action(icon: Icons.link_rounded, label: 'Copy link', onTap: () => onAction(PostAction.copy)),
                 _Action(

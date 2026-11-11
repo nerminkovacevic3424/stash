@@ -1,6 +1,6 @@
 # Stash
 
-Save Instagram and TikTok posts into folders straight from the share sheet. Stash suggests a folder; one tap on **Save** files the post and returns you to the app you were in.
+Save videos and posts from Instagram, TikTok, YouTube, Facebook, X or any other site into folders, straight from the share sheet. Stash suggests a folder; one tap on **Save** files the post and returns you to the app you were in.
 
 ```
 app/        Flutter app (Android + iOS)
@@ -17,6 +17,9 @@ supabase/   schema for optional multi-device sync
 - **iOS**: the Share Extension is native SwiftUI (fast to launch, well inside the extension memory limit). It reads and writes the same SQLite file as the Flutter app through the App Group container, so there is no hand-off step.
 - **Suggestion order**: a folder you previously used or corrected for this author → keywords learned from your corrections → the LLM (existing folder, or a proposed new one) → last-used folder → Unsorted. If nothing answers within 1.5s the fallback is used and never swapped out from under your thumb.
 - **Previews**: the phone fetches the cover image, author and caption itself (Instagram's post and embed pages, TikTok's post page), because the platforms answer devices far more readily than cloud servers. The backend is the fallback. The iOS extension still asks the backend only.
+- **Platforms**: Instagram, TikTok, YouTube, Facebook and X are recognised by name; a link to any other site is saved too, labelled with the site. Previews are best on Instagram, TikTok, YouTube and sites with link-preview tags. Facebook and X give a preview fetcher almost nothing, so those posts rely on the text shared alongside the link.
+- **Opening a post**: on Android the link is handed to the platform's own app by package name, because a plain "view" request often lands in the browser. If the app is not installed, the browser opens.
+- **In the app**: favorites, an All posts view, and "Add a link" for pasting a link without the share sheet.
 - **AI description**: the AI writes a one-sentence description of each post from its caption and cover image. Cards show it (marked with a sparkle) in place of the raw caption, and search covers it.
 - **Sorting by content**: when no existing folder matches a post's topic, the AI proposes a new folder and it is created on save. Posts saved before the AI could answer are sorted the next time the app is open and online, including into new folders.
 - **Offline**: saving only needs the URL. Posts saved without a preview, or filed by fallback, are finished by a queue the next time the main app is open and online.

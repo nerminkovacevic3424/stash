@@ -77,6 +77,10 @@ class ShareController extends ChangeNotifier {
   Future<void> start(String? sharedText) async {
     folders = await repo.folders();
     final raw = extractUrl(sharedText);
+    // Apps often share a title next to the link ("Watch … on YouTube").
+    // Keep it as a stand-in caption for when the site gives us none.
+    final said = raw == null ? '' : sharedText!.replaceFirst(raw, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final sharedCaption = said.length >= 4 ? said : null;
     final l = raw == null ? null : canonicalize(raw);
     if (l == null) {
       stage = ShareStage.invalid;
@@ -102,6 +106,18 @@ class ShareController extends ChangeNotifier {
       m = await api.metadata(l.url, timeout: const Duration(seconds: 6));
     } on Unreachable {
       reachable = false;
+    }
+    if (sharedCaption != null && m?.caption == null) {
+      m = PostMeta(
+        url: m?.url ?? l.url,
+        resolved: m?.resolved ?? !l.needsResolve,
+        author: m?.author,
+        authorName: m?.authorName,
+        caption: sharedCaption,
+        thumbnailUrl: m?.thumbnailUrl,
+        hashtags: hashtagsOf(sharedCaption),
+        ok: m?.ok ?? false,
+      );
     }
     meta = m;
     metaLoading = false;

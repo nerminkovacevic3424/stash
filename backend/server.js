@@ -53,7 +53,7 @@ async function readJson(req) {
 /** Accepts either a clean `url` or the raw shared `text`. */
 function urlFrom(body) {
   const url = extractUrl(typeof body.url === 'string' ? body.url : body.text);
-  if (!url) throw Object.assign(new Error('no Instagram or TikTok URL found'), { status: 422 });
+  if (!url) throw Object.assign(new Error('no supported link found'), { status: 422 });
   return url;
 }
 

@@ -39,6 +39,7 @@ const schema = <String>[
     needs_suggestion INTEGER NOT NULL DEFAULT 0,
     ai_description TEXT,
     ai_status INTEGER NOT NULL DEFAULT 0,
+    favorite INTEGER NOT NULL DEFAULT 0,
     deleted INTEGER NOT NULL DEFAULT 0,
     dirty INTEGER NOT NULL DEFAULT 1)''',
   'CREATE INDEX IF NOT EXISTS posts_folder ON posts(folder_id, created_at)',
@@ -104,6 +105,9 @@ class Repo {
           if (!have.contains('ai_description')) await db.execute('ALTER TABLE posts ADD COLUMN ai_description TEXT');
           if (!have.contains('ai_status')) {
             await db.execute('ALTER TABLE posts ADD COLUMN ai_status INTEGER NOT NULL DEFAULT 0');
+          }
+          if (!have.contains('favorite')) {
+            await db.execute('ALTER TABLE posts ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0');
           }
         },
       ),
@@ -201,9 +205,10 @@ class Repo {
 
   // ---- posts ----
 
-  Future<List<Post>> posts({String? folderId, Platform2? platform, String? query, int? limit}) async {
+  Future<List<Post>> posts({String? folderId, Platform2? platform, String? query, int? limit, bool? favorite}) async {
     final where = ['deleted = 0'];
     final args = <Object?>[];
+    if (favorite != null) where.add('favorite = ${favorite ? 1 : 0}');
     if (folderId != null) {
       where.add('folder_id = ?');
       args.add(folderId);
@@ -327,6 +332,34 @@ class Repo {
     }
     await b.commit(noResult: true);
   }
+
+  /// The platforms that have posts in this scope, most used first.
+  Future<List<Platform2>> platforms({String? folderId, bool? favorite}) async {
+    final where = [
+      'deleted = 0',
+      if (folderId != null) 'folder_id = ?',
+      if (favorite != null) 'favorite = ${favorite ? 1 : 0}',
+    ];
+    final rows = await db.rawQuery(
+      'SELECT platform FROM posts WHERE ${where.join(' AND ')} GROUP BY platform ORDER BY COUNT(*) DESC',
+      [?folderId],
+    );
+    return [for (final r in rows) Platform2.parse(r['platform'] as String?)];
+  }
+
+  /// Total and favorite post counts, for the home screen.
+  Future<(int, int)> counts() async {
+    final r = (await db.rawQuery('SELECT COUNT(*) AS n, COALESCE(SUM(favorite), 0) AS f FROM posts WHERE deleted = 0'))
+        .first;
+    return (r['n'] as int, r['f'] as int);
+  }
+
+  Future<void> setFavorite(String id, bool favorite) => db.update(
+    'posts',
+    {'favorite': favorite ? 1 : 0, 'updated_at': _now(), 'dirty': 1},
+    where: 'id = ?',
+    whereArgs: [id],
+  );
 
   Future<void> setNote(String id, String? note) => db.update(
     'posts',

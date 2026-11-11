@@ -28,6 +28,7 @@ create table if not exists public.posts (
   thumbnail_url text,
   note text,
   ai_description text,
+  favorite integer not null default 0,
   folder_id text not null,
   created_at bigint not null,
   updated_at bigint not null,
@@ -38,6 +39,7 @@ create table if not exists public.posts (
 
 -- For projects created before AI descriptions existed.
 alter table public.posts add column if not exists ai_description text;
+alter table public.posts add column if not exists favorite integer not null default 0;
 
 create index if not exists folders_sync on public.folders (user_id, server_updated_at);
 create index if not exists posts_sync on public.posts (user_id, server_updated_at);

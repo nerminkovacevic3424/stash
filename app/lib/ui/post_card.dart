@@ -1,9 +1,12 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/store.dart';
 import '../models.dart';
+import '../services/link_parser.dart';
 import 'folder_sheets.dart';
 import 'post_details.dart';
 import 'widgets.dart';
@@ -19,7 +22,12 @@ String formatDate(DateTime d) {
   return '${d.day} ${_months[d.month - 1]}${d.year == now.year ? '' : ' ${d.year}'}';
 }
 
-String _title(Post post) => post.author != null ? '@${post.author}' : '${post.platform.label} post';
+/// Who or where a post is from: the handle, else the site.
+String postTitle(Post post) {
+  if (post.author != null) return '@${post.author}';
+  final source = sourceLabel(post.platform, post.url);
+  return post.platform == Platform2.other ? source : '$source post';
+}
 
 /// The line that says what a post is: the AI's description when there is one,
 /// otherwise the original caption.
@@ -28,20 +36,49 @@ String? _summary(Post post) {
   return c == null || c.isEmpty ? null : c;
 }
 
-/// Opens the original post. The https link is a universal/app link, so the
-/// Instagram or TikTok app takes it when installed; otherwise the browser does.
+const _openChannel = MethodChannel('stash/open');
+
+/// Android packages that play each platform's links, most common first.
+const _apps = <Platform2, List<String>>{
+  Platform2.tiktok: ['com.zhiliaoapp.musically', 'com.ss.android.ugc.trill', 'com.zhiliaoapp.musically.go'],
+  Platform2.instagram: ['com.instagram.android', 'com.instagram.lite'],
+  Platform2.youtube: ['com.google.android.youtube'],
+  Platform2.facebook: ['com.facebook.katana', 'com.facebook.lite'],
+  Platform2.x: ['com.twitter.android'],
+};
+
+/// Opens the original post in the platform's own app when it is installed,
+/// and in the browser otherwise.
+///
+/// A plain "view this link" request is not enough on Android: the system
+/// often answers it with the browser, which shows the post as a web page.
+/// So the link is handed to the app by name first.
 Future<void> openPost(BuildContext context, Post post) async {
   final uri = Uri.parse(post.url);
   var ok = false;
-  try {
-    ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-  } catch (_) {}
+  final apps = _apps[post.platform];
+  if (Platform.isAndroid && apps != null) {
+    try {
+      ok = await _openChannel.invokeMethod<bool>('openInApp', {'url': post.url, 'packages': apps}) ?? false;
+    } catch (_) {}
+  }
+  if (!ok && Platform.isIOS) {
+    // Succeeds only when an installed app claims the link.
+    try {
+      ok = await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
+    } catch (_) {}
+  }
+  if (!ok) {
+    try {
+      ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
   if (!ok && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open this post')));
   }
 }
 
-enum PostAction { open, move, note, copy, delete }
+enum PostAction { open, favorite, move, note, copy, delete }
 
 Future<void> runPostAction(BuildContext context, Store store, Post post, PostAction action) async {
   switch (action) {
@@ -57,6 +94,8 @@ Future<void> runPostAction(BuildContext context, Store store, Post post, PostAct
     case PostAction.note:
       final note = await _editNote(context, post);
       if (note != null) await store.mutate(() => store.repo.setNote(post.id, note));
+    case PostAction.favorite:
+      await store.mutate(() => store.repo.setFavorite(post.id, !post.favorite));
     case PostAction.copy:
       await Clipboard.setData(ClipboardData(text: post.url));
     case PostAction.delete:
@@ -131,7 +170,7 @@ class PostTile extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: '${_title(post)}. ${caption ?? ''}',
+      label: '${postTitle(post)}. ${caption ?? ''}',
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () => openPost(context, post),
@@ -183,7 +222,7 @@ class PostTile extends StatelessWidget {
                       right: 12,
                       bottom: 10,
                       child: Text(
-                        _title(post),
+                        postTitle(post),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
@@ -213,6 +252,10 @@ class PostTile extends StatelessWidget {
                   if (post.note != null) ...[
                     const SizedBox(width: 6),
                     Icon(Icons.sticky_note_2_outlined, size: 13, color: muted),
+                  ],
+                  if (post.favorite) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.favorite_rounded, size: 13, color: Color(0xFFE5484D), semanticLabel: 'Favorite'),
                   ],
                 ],
               ),
@@ -255,7 +298,7 @@ class PostCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _title(post),
+                    postTitle(post),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
@@ -298,21 +341,24 @@ class PostCard extends StatelessWidget {
   }
 }
 
-/// All / Instagram / TikTok.
+/// "All" plus one chip per platform in [options]. Hidden when there is
+/// nothing to choose between.
 class PlatformFilter extends StatelessWidget {
-  const PlatformFilter({super.key, required this.value, required this.onChanged});
+  const PlatformFilter({super.key, required this.value, required this.options, required this.onChanged});
   final Platform2? value;
+  final List<Platform2> options;
   final ValueChanged<Platform2?> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    if (options.length < 2) return const SizedBox(height: 8);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
         children: [
-          for (final (p, label) in [(null, 'All'), (Platform2.instagram, 'Instagram'), (Platform2.tiktok, 'TikTok')])
+          for (final (p, label) in <(Platform2?, String)>[(null, 'All'), for (final o in options) (o, o.label)])
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Semantics(

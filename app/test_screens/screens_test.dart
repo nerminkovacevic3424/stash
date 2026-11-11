@@ -129,6 +129,9 @@ const _posts = [
   ('Workouts', 'instagram', 'mobilityfix', 'Fix tight hips with these three stretches', null),
   ('Home ideas', 'instagram', 'smallspaces', 'Renter friendly kitchen makeover under 200', null),
   ('Funny', 'tiktok', 'catdistributor', 'He does this every single morning', null),
+  ('Workouts', 'youtube', 'movewithnicole', '20 minute full body pilates, no equipment', null),
+  ('Home ideas', 'facebook', 'diy.home', 'Small balcony makeover on a budget', null),
+  ('Travel', 'other', null, 'A slow weekend in the Scottish Highlands', null),
 ];
 
 const _descriptions = [
@@ -155,9 +158,13 @@ Future<Repo> _seed() async {
   }
   var i = 0;
   for (final (folder, platform, author, caption, note) in _posts) {
-    final url = platform == 'tiktok'
-        ? 'https://www.tiktok.com/@$author/video/10$i'
-        : 'https://www.instagram.com/reel/SEED$i/';
+    final url = switch (platform) {
+      'tiktok' => 'https://www.tiktok.com/@$author/video/10$i',
+      'youtube' => 'https://www.youtube.com/watch?v=SEEDvideo0$i',
+      'facebook' => 'https://www.facebook.com/reel/90$i',
+      'other' => 'https://vimeo.com/7697987$i',
+      _ => 'https://www.instagram.com/reel/SEED$i/',
+    };
     await repo.insertPost(
       link: LinkInfo(platform: Platform2.parse(platform), url: url, author: author),
       sourceUrl: url,

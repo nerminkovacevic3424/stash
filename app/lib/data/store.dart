@@ -28,6 +28,11 @@ class Store extends ChangeNotifier {
   /// The newest saves across all folders, for the home screen.
   List<Post> recent = const [];
 
+  /// Platforms with at least one saved post, most used first.
+  List<Platform2> platforms = const [];
+  int total = 0;
+  int favorites = 0;
+
   Folder? folderById(String id) {
     for (final f in folders) {
       if (f.id == id) return f;
@@ -40,6 +45,10 @@ class Store extends ChangeNotifier {
   Future<void> reload() async {
     folders = await repo.folders();
     recent = await repo.posts(limit: 12);
+    platforms = await repo.platforms();
+    final (all, fav) = await repo.counts();
+    total = all;
+    favorites = fav;
     notifyListeners();
   }
 

@@ -4,7 +4,17 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import 'theme.dart';
 
-/// Small round platform marker. Uses neutral glyphs rather than brand logos.
+/// Brand colour used to tint things that belong to a platform.
+Color platformColor(Platform2 p) => switch (p) {
+  Platform2.instagram => const Color(0xFFE1306C),
+  Platform2.tiktok => const Color(0xFF12A594),
+  Platform2.youtube => const Color(0xFFE5332A),
+  Platform2.facebook => const Color(0xFF1877F2),
+  Platform2.x => const Color(0xFF536471),
+  Platform2.other => const Color(0xFF6E6AD8),
+};
+
+/// Small round marker saying where a post came from.
 class PlatformBadge extends StatelessWidget {
   const PlatformBadge(this.platform, {super.key, this.size = 22});
   final Platform2 platform;
@@ -12,23 +22,34 @@ class PlatformBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ig = platform == Platform2.instagram;
+    final (Color color, IconData? icon) = switch (platform) {
+      Platform2.instagram => (Colors.transparent, Icons.photo_camera_outlined),
+      Platform2.tiktok => (Colors.black, Icons.tiktok),
+      Platform2.youtube => (const Color(0xFFE5332A), Icons.play_arrow_rounded),
+      Platform2.facebook => (const Color(0xFF1877F2), Icons.facebook),
+      Platform2.x => (Colors.black, null),
+      Platform2.other => (const Color(0xFF5B6270), Icons.link_rounded),
+    };
     return Semantics(
       label: platform.label,
       child: Container(
         width: size,
         height: size,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: ig ? const LinearGradient(colors: [Color(0xFFF58529), Color(0xFFDD2A7B), Color(0xFF8134AF)]) : null,
-          color: ig ? null : Colors.black,
+          gradient: platform == Platform2.instagram
+              ? const LinearGradient(colors: [Color(0xFFF58529), Color(0xFFDD2A7B), Color(0xFF8134AF)])
+              : null,
+          color: platform == Platform2.instagram ? null : color,
           border: Border.all(color: Colors.white, width: 1.5),
         ),
-        child: Icon(
-          ig ? Icons.photo_camera_outlined : Icons.music_note_rounded,
-          size: size * 0.55,
-          color: Colors.white,
-        ),
+        child: icon != null
+            ? Icon(icon, size: size * (platform == Platform2.youtube ? 0.7 : 0.55), color: Colors.white)
+            : Text(
+                'X',
+                style: TextStyle(color: Colors.white, fontSize: size * 0.48, fontWeight: FontWeight.w900, height: 1),
+              ),
       ),
     );
   }
@@ -49,11 +70,7 @@ class PostImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final dark = scheme.brightness == Brightness.dark;
-    final tint = switch (platform) {
-      Platform2.instagram => const Color(0xFFE1306C),
-      Platform2.tiktok => const Color(0xFF12A594),
-      null => scheme.primary,
-    };
+    final tint = platform == null ? scheme.primary : platformColor(platform!);
     final base = scheme.surfaceContainerHighest;
     final placeholder = DecoratedBox(
       decoration: BoxDecoration(

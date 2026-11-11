@@ -72,6 +72,7 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           PlatformFilter(
             value: _platform,
+            options: widget.store.platforms,
             onChanged: (p) {
               setState(() => _platform = p);
               _search();

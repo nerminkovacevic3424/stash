@@ -65,7 +65,7 @@ struct ShareSheetView: View {
         case .invalid:
             message(
                 title: "Nothing to save here",
-                body: "Stash saves Instagram and TikTok posts. Share a post, reel or video link to file it.")
+                body: "Stash saves links. Share a video or post from Instagram, TikTok, YouTube, Facebook or any site.")
         case .setupNeeded:
             message(
                 title: "Finish setup",
@@ -162,14 +162,14 @@ struct ShareSheetView: View {
             .frame(width: 60, height: 60)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(alignment: .bottomTrailing) {
-                Image(systemName: link.platform == "instagram" ? "camera.fill" : "music.note")
+                Image(systemName: badgeIcon(link.platform))
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white)
                     .frame(width: 22, height: 22)
-                    .background(Circle().fill(link.platform == "instagram" ? Color.pink : Color.black))
+                    .background(Circle().fill(badgeColor(link.platform)))
                     .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
                     .offset(x: 4, y: 4)
-                    .accessibilityLabel(link.platform == "instagram" ? "Instagram" : "TikTok")
+                    .accessibilityLabel(LinkParser.sourceLabel(link))
             }
 
             VStack(alignment: .leading, spacing: 5) {
@@ -178,7 +178,8 @@ struct ShareSheetView: View {
                 } else if model.metaLoading {
                     skeleton(width: 110)
                 } else {
-                    Text(link.platform == "instagram" ? "Instagram post" : "TikTok post").font(.subheadline.weight(.bold))
+                    Text(link.platform == "other" ? LinkParser.sourceLabel(link) : "\(LinkParser.sourceLabel(link)) post")
+                        .font(.subheadline.weight(.bold))
                 }
                 if let caption = model.aiDescription ?? model.meta?.caption, !caption.isEmpty {
                     Text(caption).font(.footnote).foregroundColor(.secondary).lineLimit(2)
@@ -190,6 +191,27 @@ struct ShareSheetView: View {
                 }
             }
             Spacer(minLength: 0)
+        }
+    }
+
+    private func badgeIcon(_ platform: String) -> String {
+        switch platform {
+        case "instagram": return "camera.fill"
+        case "tiktok": return "music.note"
+        case "youtube": return "play.fill"
+        case "facebook": return "f.circle.fill"
+        case "x": return "xmark"
+        default: return "link"
+        }
+    }
+
+    private func badgeColor(_ platform: String) -> Color {
+        switch platform {
+        case "instagram": return .pink
+        case "youtube": return .red
+        case "facebook": return .blue
+        case "tiktok", "x": return .black
+        default: return .gray
         }
     }
 

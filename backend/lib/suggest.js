@@ -17,7 +17,7 @@ const Answer = z.object({
   new_emoji: z.string().describe('one emoji for the new folder; empty string when kind is "existing"'),
 });
 
-const SYSTEM = `You organize a person's saved Instagram and TikTok posts.
+const SYSTEM = `You organize a person's saved videos and posts from Instagram, TikTok, YouTube, Facebook and other sites.
 
 You get one post: platform, author, caption, hashtags and, when available, its cover image. You also get the person's folders, each with its id, name and a few captions already saved there, and sometimes keyword hints: words this person has filed into a particular folder by hand. Treat hints as strong evidence of how they think about their folders.
 
@@ -40,7 +40,8 @@ const clip = (s, n) => (typeof s === 'string' ? s.slice(0, n) : '');
 
 // Only the platforms' own image CDNs may be fetched, so this cannot be used
 // to make the server request arbitrary addresses.
-const IMAGE_HOST = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|ttwstatic\.com)$/i;
+const IMAGE_HOST =
+  /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|ttwstatic\.com|ytimg\.com|twimg\.com|vimeocdn\.com|pinimg\.com|redd\.it)$/i;
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 /** Downloads the cover image for the model to look at. Null on any problem. */
