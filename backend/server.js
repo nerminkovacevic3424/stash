@@ -2,6 +2,7 @@ import http from 'node:http';
 import { extractUrl, resolve } from './lib/urls.js';
 import { fetchMetadata } from './lib/metadata.js';
 import { suggestFolder } from './lib/suggest.js';
+import { extractDetails, searchPosts, tidyLibrary } from './lib/assist.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const APP_KEY = process.env.APP_KEY || '';
@@ -40,7 +41,7 @@ async function readJson(req) {
   let size = 0;
   for await (const c of req) {
     size += c.length;
-    if (size > 64 * 1024) throw Object.assign(new Error('body too large'), { status: 413 });
+    if (size > 256 * 1024) throw Object.assign(new Error('body too large'), { status: 413 });
     chunks.push(c);
   }
   try {
@@ -57,6 +58,16 @@ function urlFrom(body) {
   return url;
 }
 
+/** Runs an AI helper; on any failure logs it and answers with `fallback`. */
+async function quiet(name, run, fallback) {
+  try {
+    return await run();
+  } catch (err) {
+    console.error(`${name} failed:`, err?.status ?? '', err?.message);
+    return fallback;
+  }
+}
+
 const routes = {
   'POST /v1/resolve': async (body) => {
     const link = await resolve(urlFrom(body));
@@ -68,9 +79,12 @@ const routes = {
       return await suggestFolder(body); // { description, suggestion }
     } catch (err) {
       console.error('suggest failed:', err?.status ?? '', err?.message);
-      return { description: null, suggestion: null }; // the app falls back to last-used / Unsorted
+      return { description: null, tags: [], suggestion: null }; // the app falls back to last-used / Unsorted
     }
   },
+  'POST /v1/extract': (body) => quiet('extract', () => extractDetails(body), { points: [], place: null }),
+  'POST /v1/search': (body) => quiet('search', () => searchPosts(body), { ids: [], failed: true }),
+  'POST /v1/tidy': (body) => quiet('tidy', () => tidyLibrary(body), { merges: [], moves: [], failed: true }),
 };
 
 const server = http.createServer(async (req, res) => {
