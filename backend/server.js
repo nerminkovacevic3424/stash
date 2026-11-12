@@ -31,8 +31,17 @@ function clientIp(req) {
   return fwd || req.socket.remoteAddress || '';
 }
 
+// The web app is served from a different origin than this API. There are no
+// cookies or sessions here, so any origin may call it.
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'content-type, x-app-key',
+  'access-control-max-age': '86400',
+};
+
 function send(res, status, body) {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', ...CORS });
   res.end(JSON.stringify(body));
 }
 
@@ -90,6 +99,11 @@ const routes = {
 const server = http.createServer(async (req, res) => {
   try {
     const path = new URL(req.url, 'http://x').pathname;
+    // Browsers ask permission first; the web app runs on another origin.
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, CORS);
+      return res.end();
+    }
     if (req.method === 'GET' && path === '/health') return send(res, 200, { ok: true });
 
     const handler = routes[`${req.method} ${path}`];
