@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../models.dart';
@@ -56,7 +57,11 @@ class PlatformBadge extends StatelessWidget {
 }
 
 /// How post images are loaded. Tests swap this to render without a network.
-ImageProvider Function(String url) postImageProvider = CachedNetworkImageProvider.new;
+ImageProvider Function(String url) postImageProvider = kIsWeb
+    // Covers come from other sites; let the browser show them as plain image
+    // elements when it may not read their pixels.
+    ? (url) => NetworkImage(url, webHtmlElementStrategy: WebHtmlElementStrategy.fallback)
+    : CachedNetworkImageProvider.new;
 
 /// A post image that fills its box. While loading, or when there is no
 /// (working) image, it shows a soft tile tinted for the post's platform.

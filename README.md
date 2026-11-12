@@ -11,6 +11,8 @@ backend/    Node service: metadata, redirect resolution, AI folder suggestion
 supabase/   schema for optional multi-device sync
 ```
 
+The same app also runs in a browser, served by the backend at its own address; see [WEB_PLAN.md](WEB_PLAN.md) for what differs on the web.
+
 ## How it works
 
 - **Android**: `ShareActivity` is a translucent activity that runs a second Dart entrypoint (`shareMain`), so the sheet draws over Instagram/TikTok and shares all logic with the main app.

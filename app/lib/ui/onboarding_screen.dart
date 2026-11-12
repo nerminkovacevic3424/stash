@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'logo.dart';
@@ -17,11 +18,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   int _page = 0;
 
   static const _steps = [
-    (
-      Icons.ios_share_rounded,
-      'Share to Stash',
-      'In Instagram, TikTok, YouTube or any app, tap Share on a video or post and choose Stash.',
-    ),
+    kIsWeb
+        ? (
+            Icons.add_link_rounded,
+            'Paste a link',
+            'Copy the link of a video or post from Instagram, TikTok, YouTube or any site, and add it to Stash.',
+          )
+        : (
+            Icons.ios_share_rounded,
+            'Share to Stash',
+            'In Instagram, TikTok, YouTube or any app, tap Share on a video or post and choose Stash.',
+          ),
     (
       Icons.auto_awesome_rounded,
       'It files itself',

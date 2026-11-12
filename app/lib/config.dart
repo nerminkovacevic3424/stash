@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 /// Build-time configuration. Pass with `--dart-define=NAME=value`.
 class Config {
@@ -7,7 +7,9 @@ class Config {
   /// Defaults to a backend running on the development machine.
   static String get backendUrl {
     if (_backend.isNotEmpty) return _backend;
-    return Platform.isAndroid ? 'http://10.0.2.2:8787' : 'http://127.0.0.1:8787';
+    // The web app is served by the backend itself, so it talks to its own origin.
+    if (kIsWeb) return Uri.base.origin;
+    return defaultTargetPlatform == TargetPlatform.android ? 'http://10.0.2.2:8787' : 'http://127.0.0.1:8787';
   }
 
   static const appKey = String.fromEnvironment('STASH_APP_KEY');

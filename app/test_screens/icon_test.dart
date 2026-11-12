@@ -67,6 +67,18 @@ void main() {
         );
       }
 
+      // Web: browser tab icon and installable-app icons.
+      await _write('web/favicon.png', 64, const StashLogoPainter());
+      for (final px in [192, 512]) {
+        await _write('web/icons/Icon-$px.png', px, const StashLogoPainter());
+        await _write(
+          'web/icons/Icon-maskable-$px.png',
+          px,
+          const StashLogoPainter(cornerRadius: 0, glyphScale: 0.72),
+          matte: StashLogoPainter.bottom,
+        );
+      }
+
       await _write('../screenshots/icon.png', 512, const StashLogoPainter());
       await _write('../screenshots/icon_small.png', 96, const StashLogoPainter());
     });

@@ -1,0 +1,35 @@
+{
+    "name": "Stash",
+    "short_name": "Stash",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#FCFCFD",
+    "theme_color": "#5B5BD6",
+    "description": "Save videos and posts into folders that sort themselves.",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -269,7 +270,7 @@ class _ShareSheetState extends State<ShareSheet> {
                 ),
                 const SizedBox(width: 4),
               ],
-              _remindButton(theme),
+              if (!kIsWeb) _remindButton(theme),
             ],
           ),
         const SizedBox(height: 6),

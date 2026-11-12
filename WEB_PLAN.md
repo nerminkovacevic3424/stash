@@ -1,42 +1,32 @@
-# Web app: plan and status
+# Web app: status
 
-Goal: run Stash in a browser from the same Flutter code as the Android app.
+Stash runs in a browser from the same Flutter code as the Android app. The built web app lives in
+`backend/public/` and is served by the backend itself, at the server's own address.
 
-## Done
+## How it differs from the phone app
 
-- [x] Web target added (`app/web/`), nothing else changed in the app.
-- [x] Server answers browsers: CORS headers and `OPTIONS` preflight in `backend/server.js`.
+- **Adding posts**: there is no share menu in a browser, so links are pasted with "Add a link".
+- **Previews**: a browser may not read other sites' pages, so previews come from the server only.
+  YouTube works; Instagram and TikTok return little to a cloud server, so those posts often show
+  without a cover or caption on the web.
+- **Reminders, the home screen widget, opening posts in the platform's app**: phone only. On the
+  web, "Open" opens the post in a new tab.
+- **Data**: stored in this browser (SQLite compiled to WebAssembly). It is a separate library from
+  the phone's; nothing syncs until real accounts and a database exist.
 
-## To do, in order
+## Rebuilding after a change
 
-1. **Storage.** `sqflite` has no web support. Add `sqflite_common_ffi_web` and, on web, open the
-   database with `databaseFactoryFfiWeb` (SQLite compiled to WebAssembly, stored in the browser).
-   `Repo.open()` already accepts a `factory`; pass it from `main.dart` when `kIsWeb`.
-   Needs `dart run sqflite_common_ffi_web:setup` once to copy the wasm files into `web/`.
-2. **Remove `dart:io` from code the web build compiles.** It is used in:
-   - `lib/config.dart` (`Platform.isAndroid` for the default server address)
-   - `lib/data/repo.dart` (`defaultPath`, `path_provider_foundation`)
-   - `lib/ui/post_card.dart` (`Platform.isAndroid` / `isIOS` in `openPost`)
-   Replace with `kIsWeb` / `defaultTargetPlatform`, and move the iOS container path behind a
-   conditional import.
-3. **Previews.** A browser cannot fetch Instagram/TikTok pages itself (CORS), so on web
-   `Api.metadata` must skip `DeviceMeta` and ask the server only. Known limit: the server gets
-   little from Instagram and TikTok on Render, so web previews will be weaker than on the phone.
-   YouTube works from the server.
-4. **Things that do not exist in a browser.** Guard with `kIsWeb`:
-   - share sheet and `MethodChannel`s (`stash/share`, `stash/open`, `stash/system`): on web the way
-     in is "Add a link", which already exists
-   - home screen widget (Android only)
-   - reminders: `flutter_local_notifications` has limited web support; hide "Remind me" on web first
-   - `Reminders.init()` and `SyncService.init()` at start-up
-5. **Layout.** The app is phone-shaped. Constrain content to about 1100 px and let the folder and
-   post grids use more columns (they already adapt to width).
-6. **Build and host.** `flutter build web --dart-define=STASH_BACKEND_URL=...`, then serve
-   `build/web` as a static site (Render static site, Firebase Hosting, or GitHub Pages).
-7. **Data is per device.** The web app has its own empty library: nothing syncs with the phone
-   until real accounts and a database exist (see the Firebase discussion).
+From a short path (the Windows path limit applies to builds):
 
-## How to check each step
+    cd app
+    flutter build web --release
+    # copy build/web/* to backend/public/, without the canvaskit/ folder (it loads from Google's CDN)
 
-- `flutter analyze` and `flutter test` must stay green (Android must not regress).
-- `flutter build web` must succeed, then open `build/web` through a local static server.
+`web/sqlite3.wasm` and `web/sqflite_sw.js` are created once by `dart run sqflite_common_ffi_web:setup`.
+
+Commit and push; Render redeploys the server with the new web app.
+
+## Not done
+
+- A wider desktop layout (the app is a phone-width column, capped at 1100 px).
+- Translating phone-specific wording beyond the first-run screens.

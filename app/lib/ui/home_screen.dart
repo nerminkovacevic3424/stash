@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -214,7 +215,10 @@ class HomeScreen extends StatelessWidget {
                   if (empty)
                     SliverFillRemaining(
                       hasScrollBody: false,
-                      child: _EmptyState(onCreate: () => createFolderFlow(context, store)),
+                      child: _EmptyState(
+                        onCreate: () => createFolderFlow(context, store),
+                        onAddLink: () => addLinkFlow(context, store),
+                      ),
                     )
                   else ...[
                     if (store.recent.length >= 3) ...[
@@ -551,8 +555,9 @@ class _Cover extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onCreate});
+  const _EmptyState({required this.onCreate, required this.onAddLink});
   final VoidCallback onCreate;
+  final VoidCallback onAddLink;
 
   @override
   Widget build(BuildContext context) {
@@ -584,15 +589,28 @@ class _EmptyState extends StatelessWidget {
         children: [
           Text('Save your first post', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 20),
-          step('1', 'Open a video in Instagram, TikTok, YouTube or Facebook'),
-          step('2', 'Tap Share, then choose Stash'),
-          step('3', 'Tap Save. Stash picks the folder'),
-          const SizedBox(height: 12),
-          FilledButton.tonalIcon(
-            onPressed: onCreate,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Create a folder'),
-          ),
+          // In a browser there is no share menu; links are pasted in.
+          if (kIsWeb) ...[
+            step('1', 'Copy the link of a video or post'),
+            step('2', 'Choose Add a link and paste it'),
+            step('3', 'Save. Stash picks the folder'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: onAddLink,
+              icon: const Icon(Icons.add_link_rounded),
+              label: const Text('Add a link'),
+            ),
+          ] else ...[
+            step('1', 'Open a video in Instagram, TikTok, YouTube or Facebook'),
+            step('2', 'Tap Share, then choose Stash'),
+            step('3', 'Tap Save. Stash picks the folder'),
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Create a folder'),
+            ),
+          ],
         ],
       ),
     );

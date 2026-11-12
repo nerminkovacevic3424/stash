@@ -1,4 +1,7 @@
 import http from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { extractUrl, resolve } from './lib/urls.js';
 import { fetchMetadata } from './lib/metadata.js';
 import { suggestFolder } from './lib/suggest.js';
@@ -67,6 +70,47 @@ function urlFrom(body) {
   return url;
 }
 
+// The built web app (flutter build web) lives in ./public and is served from
+// the same origin as the API, so the browser needs no special permission.
+const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
+  '.otf': 'font/otf',
+  '.ttf': 'font/ttf',
+};
+
+async function serveStatic(path, res) {
+  let rel;
+  try {
+    rel = decodeURIComponent(path).replace(/^\/+/, '');
+  } catch {
+    return send(res, 400, { error: 'bad path' });
+  }
+  if (rel.split(/[\\/]/).includes('..')) return send(res, 400, { error: 'bad path' });
+  // A path with no file extension is a page inside the app: answer with the app itself.
+  const file = rel === '' || !extname(rel) ? 'index.html' : rel;
+  try {
+    const body = await readFile(join(PUBLIC, file));
+    // The entry files change on every release; everything else can be cached for a day.
+    const fresh = file === 'index.html' || /^(flutter_bootstrap|flutter_service_worker|main\.dart|version)\b/.test(file);
+    res.writeHead(200, {
+      'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
+      'cache-control': fresh ? 'no-cache' : 'public, max-age=86400',
+    });
+    res.end(body);
+  } catch {
+    send(res, 404, { error: 'not found' });
+  }
+}
+
 /** Runs an AI helper; on any failure logs it and answers with `fallback`. */
 async function quiet(name, run, fallback) {
   try {
@@ -105,6 +149,8 @@ const server = http.createServer(async (req, res) => {
       return res.end();
     }
     if (req.method === 'GET' && path === '/health') return send(res, 200, { ok: true });
+
+    if (req.method === 'GET' && !path.startsWith('/v1/')) return serveStatic(path, res);
 
     const handler = routes[`${req.method} ${path}`];
     if (!handler) return send(res, 404, { error: 'not found' });

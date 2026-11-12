@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'data/repo.dart';
@@ -95,7 +96,7 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
   /// on, so reminders work later without a detour. Asked once; after that the
   /// prompt only appears when a reminder is being set.
   void _askForNotificationsOnce() {
-    if (_onboarding || !store.auth.signedIn) return;
+    if (kIsWeb || _onboarding || !store.auth.signedIn) return;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (await store.repo.kv(_askedNotificationsKey) != null) return;
       await store.repo.setKv(_askedNotificationsKey, '1');
@@ -135,6 +136,16 @@ class _StashAppState extends State<StashApp> with WidgetsBindingObserver {
     title: 'Stash',
     debugShowCheckedModeBanner: false,
     navigatorKey: _navigator,
+    // The layout is phone-shaped; on a wide browser window keep it to a
+    // readable column instead of stretching edge to edge.
+    builder: (context, child) => kIsWeb
+        ? ColoredBox(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            child: Center(
+              child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: child),
+            ),
+          )
+        : child!,
     theme: buildTheme(Brightness.light),
     darkTheme: buildTheme(Brightness.dark),
     home: _onboarding

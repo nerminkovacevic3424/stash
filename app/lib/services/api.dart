@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
@@ -67,6 +68,9 @@ class Api {
     PostMeta? local;
     var deviceReached = true;
     try {
+      // A browser is not allowed to read other sites' pages, so on the web
+      // only the server can fetch previews.
+      if (kIsWeb) throw UnsupportedError('no cross-site fetch in a browser');
       local = await _device.fetch(url).timeout(timeout);
     } catch (_) {
       deviceReached = false;

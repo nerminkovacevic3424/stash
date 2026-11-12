@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -62,12 +63,12 @@ Future<void> openPost(BuildContext context, Store store, Post post) async {
   if (!post.watched) unawaited(store.mutate(() => store.repo.setWatched([post.id], true)));
   var ok = false;
   final apps = _apps[post.platform];
-  if (Platform.isAndroid && apps != null) {
+  if (!kIsWeb && Platform.isAndroid && apps != null) {
     try {
       ok = await _openChannel.invokeMethod<bool>('openInApp', {'url': post.url, 'packages': apps}) ?? false;
     } catch (_) {}
   }
-  if (!ok && Platform.isIOS) {
+  if (!ok && !kIsWeb && Platform.isIOS) {
     // Succeeds only when an installed app claims the link.
     try {
       ok = await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
@@ -104,6 +105,11 @@ Future<void> runPostAction(BuildContext context, Store store, Post post, PostAct
     case PostAction.watched:
       await store.mutate(() => store.repo.setWatched([post.id], !post.watched));
     case PostAction.remind:
+      if (kIsWeb) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Reminders are available in the phone app')));
+        return;
+      }
       final when = await pickReminder(context, current: post.remindAt);
       if (when == null) return;
       if (when == clearReminder) {

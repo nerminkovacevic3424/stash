@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../data/store.dart';
@@ -20,8 +21,10 @@ class AccountScreen extends StatelessWidget {
       children: [
         _AccountSection(auth: store.auth),
         const SizedBox(height: 16),
-        const _Card(icon: Icons.notifications_none_rounded, child: _NotificationsSection()),
-        const SizedBox(height: 16),
+        if (!kIsWeb) ...const [
+          _Card(icon: Icons.notifications_none_rounded, child: _NotificationsSection()),
+          SizedBox(height: 16),
+        ],
         _Card(
           icon: Icons.cloud_outlined,
           child: _ServerSection(store: store),

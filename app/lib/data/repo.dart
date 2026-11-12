@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider_foundation/path_provider_foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../config.dart';
 import '../models.dart';
+import 'db_factory_stub.dart' if (dart.library.js_interop) 'db_factory_web.dart';
 
 /// The schema is shared with the iOS Share Extension, which opens the same
 /// file directly (ios/StashShare/SharedStore.swift). Keep both in sync.
@@ -78,6 +80,7 @@ class Repo {
   final Database db;
 
   static Future<String> defaultPath() async {
+    if (kIsWeb) return 'stash.db';
     if (Platform.isIOS) {
       try {
         final dir = await PathProviderFoundation().getContainerPath(appGroupIdentifier: Config.appGroupId);
@@ -90,7 +93,7 @@ class Repo {
   }
 
   static Future<Repo> open({String? path, DatabaseFactory? factory}) async {
-    final f = factory ?? databaseFactory;
+    final f = factory ?? webDatabaseFactory ?? databaseFactory;
     final db = await f.openDatabase(
       path ?? await defaultPath(),
       options: OpenDatabaseOptions(
